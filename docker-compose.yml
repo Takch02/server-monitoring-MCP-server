@@ -1,0 +1,15 @@
+version: "3.9"
+
+services:
+  mcp:
+    build: .
+    container_name: mcp
+    ports:
+      - "8080:8080"
+    volumes:
+      - mcp-logs:/app/logs
+    environment:
+      - TZ=Asia/Seoul
+
+volumes:
+  mcp-logs:

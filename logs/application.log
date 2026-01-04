@@ -1,0 +1,2 @@
+2026-01-01T00:46:39.817+09:00  INFO 88810 --- [SpringApplicationShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-01-01T00:46:39.828+09:00  INFO 88810 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
