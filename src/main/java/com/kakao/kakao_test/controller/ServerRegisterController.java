@@ -1,7 +1,8 @@
 package com.kakao.kakao_test.controller;
 
 import com.kakao.kakao_test.dto.*;
-import com.kakao.kakao_test.service.McpService;
+import com.kakao.kakao_test.service.LogService;
+import com.kakao.kakao_test.service.ServerRegisterService;
 import jdk.jfr.Description;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -12,24 +13,25 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api")
 public class ServerRegisterController {
 
-    private final McpService mcpService;
+    private final LogService logService;
+    private final ServerRegisterService serverRegisterService;
 
     // 서버 등록
     @PostMapping("/servers")
     public RegisterServerResponse register(@RequestBody RegisterServerRequest req) {
-        return mcpService.registerServer(req);
+        return serverRegisterService.registerServer(req);
     }
 
     // URL 갱신 등
     @PatchMapping("/servers/{name}/url")
     public void updateUrl(@PathVariable String name, @RequestBody UpdateServerUrlRequest req) {
-        mcpService.updateServerUrl(name, req.getUrl());
+        serverRegisterService.updateServerUrl(name, req.getUrl());
     }
 
 
     // 재시작(데모)
     @PostMapping("/servers/{name}/actions/restart")
     public RestartResultDto restart(@PathVariable String name, @RequestBody RestartRequest req) {
-        return mcpService.restartServer(name, req);
+        return logService.restartServer(name, req);
     }
 }

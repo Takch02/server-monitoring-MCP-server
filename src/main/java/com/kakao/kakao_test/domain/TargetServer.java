@@ -1,32 +1,60 @@
 package com.kakao.kakao_test.domain;
 
+import com.kakao.kakao_test.dto.RegisterServerRequest;
+import jakarta.persistence.*;
+import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
+import java.time.LocalDateTime;
 
-import java.time.Instant;
-
+/**
+ * 서버 URL, Token 를 저장
+ */
+@Entity
+@NoArgsConstructor
 @Getter
-public class TargetServer {
-    private final String name;
-    private volatile String url;              // ngrok 등으로 변경 가능하므로 volatile
-    private final String healthPath;          // 예: /actuator/health
-    private final String ingestToken;         // 로그 수신 인증용(데모)
-    private final Instant createdAt;
+@Table(name = "target_server")
+public class TargetServer extends BaseTimeEntity {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-    public TargetServer(String name, String url, String healthPath, String ingestToken) {
-        this.name = name;
-        this.url = normalizeBaseUrl(url);
+    private String serverName;
+    private String serverUrl;              // ngrok 등으로 변경 가능하므로 volatile
+    private String healthPath;          // 예: /actuator/health
+    private String mcpToken;         // 로그 수신 인증용(데모)
+    private LocalDateTime heartBeat;
+
+    @Builder
+    public TargetServer(String serverName, String serverUrl, String healthPath, String mcpToken) {
+        this.serverName = serverName;
+        this.serverUrl = normalizeBaseUrl(serverUrl);
         this.healthPath = (healthPath == null || healthPath.isBlank()) ? "/actuator/health" : healthPath;
-        this.ingestToken = ingestToken;
-        this.createdAt = Instant.now();
+        this.mcpToken = mcpToken;
+        this.heartBeat = LocalDateTime.now();
     }
 
+
     public void updateUrl(String newUrl) {
-        this.url = normalizeBaseUrl(newUrl);
+        this.serverUrl = normalizeBaseUrl(newUrl);
     }
 
     private String normalizeBaseUrl(String u) {
         if (u == null) return "";
         // 끝 슬래시 제거
         return u.endsWith("/") ? u.substring(0, u.length() - 1) : u;
+    }
+
+    public static TargetServer register(RegisterServerRequest req, String token) {
+        return TargetServer.builder()
+                .serverName(req.getServerName())
+                .mcpToken(token) // 토큰 저장
+                .healthPath(req.getHealthPath())
+                .serverUrl(req.getUrl())
+                .build();
+    }
+
+    public void updateHeartbeat() {
+        this.heartBeat = LocalDateTime.now();
     }
 }

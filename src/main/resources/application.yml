@@ -1,10 +1,5 @@
 spring:
-    ai:
-      mcp:
-        server:
-          type: sse # WebFlux
-          sse:
-            path: /mcp/message # MCP
+
     web:
       locale: ko_KR
     servlet:
@@ -13,20 +8,13 @@ spring:
         enabled: true
         charset: UTF-8
 
+    jpa:
+      hibernate:
+        ddl-auto: update
+      show-sql: false
 
-logging:
-  file:
-    name: app/logs/mcp.log
-  level:
-    root: INFO
-    org.springdoc: DEBUG
-    org.springframework.web: DEBUG
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: "health,metrics,prometheus"  # logfile은 위험하니 제거
-  endpoint:
-    health:
-      show-details: always    # 인증될 경우에만 가능
+    datasource:
+      url: jdbc:mysql://localhost:3306/server_monitoring
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      username: root
+      password: tagtag1010
