@@ -24,6 +24,7 @@ public class LogService {
     private final TargetServerRepository targetServerRepository;
     private final ServerLogRepository serverLogRepository;
     private final DiscordNotificationService discordNotificationService;
+    private final ServerHeartbeatService serverHeartbeatService;
 
     /**
      * 서버 이름 가져오기 (없으면 에러)
@@ -47,8 +48,10 @@ public class LogService {
         if (events == null || events.isEmpty()) {
             return new IngestResultDto(serverName, 0, "수신할 로그가 없습니다.");
         }
+        // 1. 하트비트 갱신 (x-lock 을 얻어야 하므로 다른 트렌젝션으로 빼며 데드락을 회피)
+        serverHeartbeatService.updateHeartbeatQuickly(server.getId());
 
-        // 1. DTO -> Entity 변환
+        // 2. DTO -> Entity 변환
         List<ServerLog> logsToSave = events.stream()
                 .map(e -> ServerLog.builder()
                         .server(server)
@@ -59,11 +62,9 @@ public class LogService {
                 .toList();
 
         log.info("{} 서버로부터 수신된 {} 개의 로그를 저장합니다.", serverName, logsToSave.size());
-        // 2. DB 저장 (Batch Insert 효과)
+        // 3. DB 저장 (Batch Insert 효과)
         serverLogRepository.saveAll(logsToSave);
 
-        // 3. 하트비트 갱신
-        server.updateHeartbeat();
 
         // 4. 에러 감지 및 알림 (단순 텍스트 전송)
         List<String> errorLogs = events.stream()

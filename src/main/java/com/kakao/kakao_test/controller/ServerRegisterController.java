@@ -28,10 +28,4 @@ public class ServerRegisterController {
         serverRegisterService.updateServerUrl(name, req.getUrl());
     }
 
-
-    // 재시작(데모)
-    @PostMapping("/servers/{name}/actions/restart")
-    public RestartResultDto restart(@PathVariable String name, @RequestBody RestartRequest req) {
-        return logService.restartServer(name, req);
-    }
 }
