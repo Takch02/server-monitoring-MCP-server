@@ -62,7 +62,7 @@ public class MetricService {
             );
 
             // DTO에 담겨온 사용자 토큰으로 발송
-            discordNotificationService.sendAlert(discordWebhookUrl, serverName, alertMsg);
+            discordNotificationService.sendErrorAlert(discordWebhookUrl, serverName, alertMsg);
         }
     }
 

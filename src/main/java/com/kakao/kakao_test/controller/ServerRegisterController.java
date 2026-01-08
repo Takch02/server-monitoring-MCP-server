@@ -1,7 +1,6 @@
 package com.kakao.kakao_test.controller;
 
 import com.kakao.kakao_test.dto.*;
-import com.kakao.kakao_test.service.LogService;
 import com.kakao.kakao_test.service.ServerRegisterService;
 import jdk.jfr.Description;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +12,6 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api")
 public class ServerRegisterController {
 
-    private final LogService logService;
     private final ServerRegisterService serverRegisterService;
 
     // 서버 등록

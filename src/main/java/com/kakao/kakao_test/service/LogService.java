@@ -8,8 +8,12 @@ import com.kakao.kakao_test.repository.ServerLogRepository;
 import com.kakao.kakao_test.repository.TargetServerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -26,6 +30,8 @@ public class LogService {
     private final DiscordNotificationService discordNotificationService;
     private final ServerHeartbeatService serverHeartbeatService;
 
+    @Value("${mcp.server-url}")
+    private String myServerUrl;
     /**
      * 서버 이름 가져오기 (없으면 에러)
      */
@@ -65,7 +71,6 @@ public class LogService {
         // 3. DB 저장 (Batch Insert 효과)
         serverLogRepository.saveAll(logsToSave);
 
-
         // 4. 에러 감지 및 알림 (단순 텍스트 전송)
         List<String> errorLogs = events.stream()
                 .filter(e -> "ERROR".equalsIgnoreCase(e.getLevel()))
@@ -77,17 +82,35 @@ public class LogService {
             String shortError = firstError.length() > 200
                     ? firstError.substring(0, 200) + "..."
                     : firstError;
+            String encodedWebhook = URLEncoder.encode(discordWebhookUrl, StandardCharsets.UTF_8);
 
-            String alertMsg = String.format(
-                    "에러 로그가 감지되었습니다.\n내용: %s\n\n💡분석을 원하시면 채팅으로 물어보세요.",
-                    shortError
-            );
+            String alertMsg = createDiscordMessage(serverName, encodedWebhook, shortError);
 
             // 사용자 토큰으로 디스코드 알림 발송
-            discordNotificationService.sendAlert(discordWebhookUrl, serverName, alertMsg);
+            discordNotificationService.sendErrorAlert(discordWebhookUrl, serverName, alertMsg);
         }
 
         return new IngestResultDto(serverName, logsToSave.size(), "로그 저장 완료");
+    }
+
+    private String createDiscordMessage(String serverName, String encodedWebhook, String shortError) {
+        String diagnoseUrl = String.format(
+                "%s/api/servers/%s/diagnose?webhook=%s",
+                myServerUrl, serverName, encodedWebhook
+        );
+
+        return String.format("""
+            **에러 로그가 감지되었습니다!** 🚨
+            
+            📋 **내용 요약:**
+            `%s`
+            
+            💡 **원인을 알고 싶으신가요?**
+            👉 [**[여기]를 눌러 AI 정밀 진단 시작하기**](%s)
+            (클릭 시 브라우저가 열리며 분석이 시작됩니다)
+            """,
+                shortError, diagnoseUrl
+        );
     }
 
     /**

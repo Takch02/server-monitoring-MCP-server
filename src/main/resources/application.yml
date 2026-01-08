@@ -1,5 +1,4 @@
 spring:
-
     web:
       locale: ko_KR
     servlet:
@@ -14,7 +13,12 @@ spring:
       show-sql: false
 
     datasource:
-      url: jdbc:mysql://localhost:3306/server_monitoring
+      url: ${DB_URL}
       driver-class-name: com.mysql.cj.jdbc.Driver
-      username: root
-      password: tagtag1010
+      username: ${DB_USERNAME}
+      password: ${DB_PASSWORD}
+
+openai:
+  api-key: ${OPENAI_API_KEY}
+mcp :
+  server-url : ${AWS_URL}

@@ -55,5 +55,4 @@ public class LLMToolController {
         return ResponseEntity.ok(metricService.getMetricTrend(name));
     }
 
-
 }
