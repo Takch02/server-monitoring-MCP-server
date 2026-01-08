@@ -71,7 +71,7 @@ jobs:
               -p 8080:8080 \
               --env-file /home/${{ secrets.EC2_USERNAME }}/mcp-server/.env \
               --restart always \
-              ${{ env.IMAGE_NAME }}:latest
+              ${{ env.IMAGE_NAME }}:latest 
             
             # 4. 용량 확보를 위해 tar 파일 삭제
             rm /home/${{ secrets.EC2_USERNAME }}/${{ env.TAR_FILE }}
