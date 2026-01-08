@@ -34,8 +34,12 @@ jobs:
 
       # 5. 이미지를 파일로 저장 (docker save)
       # 이미지를 .tar 파일로 변환합니다.
+          # 5. 이미지를 파일로 저장 (docker save) + 권한 수정
       - name: Save Docker Image to Tar file
-        run: docker save -o ${{ env.TAR_FILE }} ${{ env.IMAGE_NAME }}:latest
+        run: |
+          docker save -o ${{ env.TAR_FILE }} ${{ env.IMAGE_NAME }}:latest
+          sudo chmod 644 ${{ env.TAR_FILE }}  # <--- 이 줄을 추가하세요!
+          ls -l ${{ env.TAR_FILE }}           # (선택) 권한이 잘 바뀌었는지 로그로 확인
 
       # 6. EC2로 파일 전송 (SCP)
       # 만들어진 .tar 파일을 EC2 서버의 홈 디렉토리로 보냅니다.
