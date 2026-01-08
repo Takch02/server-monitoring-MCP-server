@@ -1,0 +1,80 @@
+name: Deploy MCP Server (Direct Transfer)
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  IMAGE_NAME: mcp-server
+  TAR_FILE: mcp-server.tar
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 코드 체크아웃
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. JDK 21 설정
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # 3. Gradle 빌드 (Jar 생성)
+      - name: Build with Gradle
+        run: ./gradlew build -x test
+
+      # 4. Docker 이미지 빌드 (로컬)
+      - name: Build Docker Image
+        run: docker build -t ${{ env.IMAGE_NAME }}:latest .
+
+      # 5. 이미지를 파일로 저장 (docker save)
+      # 이미지를 .tar 파일로 변환합니다.
+      - name: Save Docker Image to Tar file
+        run: docker save -o ${{ env.TAR_FILE }} ${{ env.IMAGE_NAME }}:latest
+
+      # 6. EC2로 파일 전송 (SCP)
+      # 만들어진 .tar 파일을 EC2 서버의 홈 디렉토리로 보냅니다.
+      - name: Copy Tar file to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          source: "${{ env.TAR_FILE }}"
+          target: "/home/${{ secrets.EC2_USERNAME }}"
+
+      # 7. EC2에서 실행 (SSH)
+      - name: Load and Run on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            # 1. 전송받은 이미지를 도커에 로드
+            docker load -i /home/${{ secrets.EC2_USERNAME }}/${{ env.TAR_FILE }}
+            
+            # 2. 기존 컨테이너 중지 및 삭제
+            docker stop ${{ env.CONTAINER_NAME }} || true
+            docker rm ${{ env.CONTAINER_NAME }} || true
+            
+            # 3. 새 컨테이너 실행 (.env 파일 사용)
+            docker run -d \
+              --name ${{ env.IMAGE_NAME }} \
+              -p 8080:8080 \
+              --env-file /home/${{ secrets.EC2_USERNAME }}/mcp-server/.env \
+              --restart always \
+              ${{ env.IMAGE_NAME }}:latest
+            
+            # 4. 용량 확보를 위해 tar 파일 삭제
+            rm /home/${{ secrets.EC2_USERNAME }}/${{ env.TAR_FILE }}
+            
+            # 5. 불필요한 이미지 정리
+            docker image prune -f
