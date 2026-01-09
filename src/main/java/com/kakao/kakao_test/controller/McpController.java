@@ -35,7 +35,7 @@ public class McpController {
     // ========================================================================
     // 1. SSE 연결 엔드포인트 (PlayMCP가 접속하는 문)
     // ========================================================================
-    @GetMapping(value = "/sse", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequestMapping(value = "/sse", method = {RequestMethod.GET, RequestMethod.POST}, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter connect() {
         // 안정성을 위해 기존 연결 모두 정리 (Single User Mode)
         emitters.clear();
