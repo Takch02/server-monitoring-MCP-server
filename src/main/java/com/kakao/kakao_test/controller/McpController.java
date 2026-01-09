@@ -65,6 +65,7 @@ public class McpController {
 
                 // A. Endpoint 이벤트 전송 (필수)
                 String finalUrl = serverUrl + "/mcp/messages?id=" + id;
+                log.info("보내는 url : {}", finalUrl);
                 emitter.send(SseEmitter.event().name("endpoint").data(finalUrl));
                 log.info("✅ Endpoint 이벤트 전송 완료");
 
