@@ -10,6 +10,7 @@ import com.kakao.kakao_test.service.ServerDoctorService;
 import com.kakao.kakao_test.service.ServerRegisterService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -31,13 +32,15 @@ public class McpController {
 
     // SSE 연결 관리 (Thread-Safe)
     private final Map<String, SseEmitter> emitters = new ConcurrentHashMap<>();
-
+    @Value("${mcp.server-url}")
+    private String serverUrl;
     // ========================================================================
     // 1. SSE 연결 엔드포인트 (PlayMCP가 접속하는 문)
     // ========================================================================
     @RequestMapping(value = "/sse", method = {RequestMethod.GET, RequestMethod.POST}, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter connect() {
+    public SseEmitter connect(@RequestBody(required = false) String body) {
         // 안정성을 위해 기존 연결 모두 정리 (Single User Mode)
+        log.info("📢 Connect Request Body: {}", body);
         emitters.clear();
 
         SseEmitter emitter = new SseEmitter(Long.MAX_VALUE); // 타임아웃 무한
@@ -53,7 +56,8 @@ public class McpController {
 
         // 연결 성공 시 'endpoint' 이벤트 전송 (MCP 표준 권장사항)
         try {
-            emitter.send(SseEmitter.event().name("endpoint").data("/mcp/messages?id=" + id));
+            String finalUrl = serverUrl + "/mcp/messages?id=" + id;
+            emitter.send(SseEmitter.event().name("endpoint").data(finalUrl));
             log.info("✅ 초기 핸드셰이크 이벤트 전송 완료");
         } catch (IOException e) {
             emitters.remove(id);
