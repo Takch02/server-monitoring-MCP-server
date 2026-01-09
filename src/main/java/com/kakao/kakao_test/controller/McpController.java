@@ -133,7 +133,7 @@ public class McpController {
     // [핸들러] 초기화 요청 (Handshake)
     private void handleInitialize(SseEmitter emitter, JsonNode id) throws IOException {
         sendJsonRpcResponse(emitter, id, Map.of(
-                "protocolVersion", "2024-11-05",
+                "protocolVersion", "2025-03-26",
                 "capabilities", Map.of("tools", Map.of()),
                 "serverInfo", Map.of("name", "ServerDoctor-MCP", "version", "1.0.0")
         ));
