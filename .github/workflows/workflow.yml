@@ -66,8 +66,8 @@ jobs:
             docker load -i /home/${{ secrets.EC2_USERNAME }}/${{ env.TAR_FILE }}
             
             # 2. 기존 컨테이너 중지 및 삭제
-            docker stop ${{ env.CONTAINER_NAME }} || true
-            docker rm ${{ env.CONTAINER_NAME }} || true
+            docker stop ${{ env.IMAGE_NAME }} || true
+            docker rm ${{ env.IMAGE_NAME }} || true
             
             # 3. 불필요한 이미지 정리
             docker image prune -f
