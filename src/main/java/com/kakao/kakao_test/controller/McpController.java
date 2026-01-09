@@ -37,13 +37,16 @@ public class McpController {
     // ========================================================================
     // 1. SSE 연결 엔드포인트 (PlayMCP가 접속하는 문)
     // ========================================================================
-    @RequestMapping(value = "/sse", method = {RequestMethod.GET, RequestMethod.POST}, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequestMapping(
+            value = "/sse",
+            method = {RequestMethod.GET, RequestMethod.POST},
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE
+    )
     public SseEmitter connect(@RequestBody(required = false) String body) {
-        // 안정성을 위해 기존 연결 모두 정리 (Single User Mode)
-        log.info("📢 Connect Request Body: {}", body);
-        emitters.clear();
+        log.info("📢 MCP Connect Request");
+        emitters.clear(); // 1. 기존 연결 정리
 
-        SseEmitter emitter = new SseEmitter(Long.MAX_VALUE); // 타임아웃 무한
+        SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
         String id = String.valueOf(System.currentTimeMillis());
         emitters.put(id, emitter);
 
@@ -54,14 +57,30 @@ public class McpController {
         emitter.onTimeout(() -> emitters.remove(id));
         emitter.onError((e) -> emitters.remove(id));
 
-        // 연결 성공 시 'endpoint' 이벤트 전송 (MCP 표준 권장사항)
-        try {
-            String finalUrl = serverUrl + "/mcp/messages?id=" + id;
-            emitter.send(SseEmitter.event().name("endpoint").data(finalUrl));
-            log.info("✅ 초기 핸드셰이크 이벤트 전송 완료");
-        } catch (IOException e) {
-            emitters.remove(id);
-        }
+        // 2. 비동기 스레드에서 이벤트 및 초기화 메시지 처리
+        new Thread(() -> {
+            try {
+                // (선택) 연결 안정화를 위해 아주 잠깐 대기 (네트워크 상황에 따라 100~500ms)
+                Thread.sleep(200);
+
+                // A. Endpoint 이벤트 전송 (필수)
+                String finalUrl = serverUrl + "/mcp/messages?id=" + id;
+                emitter.send(SseEmitter.event().name("endpoint").data(finalUrl));
+                log.info("✅ Endpoint 이벤트 전송 완료");
+
+                // 요청 Body에 'initialize' 메시지가 있었다면 즉시 처리
+                if (body != null && !body.isEmpty() && !body.equals("{}")) {
+                    log.info("📩 연결 요청에 포함된 메시지 처리 중...");
+                    handleMessage(body); // 기존 handleMessage 메서드 재사용
+                }
+
+            } catch (Exception e) {
+                log.error("❌ 초기 이벤트 또는 메시지 처리 실패", e);
+                // 에러 발생 시 연결이 유효하지 않으므로 정리
+                emitters.remove(id);
+                emitter.completeWithError(e);
+            }
+        }).start();
 
         return emitter;
     }
