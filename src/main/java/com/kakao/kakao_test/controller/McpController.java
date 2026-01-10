@@ -60,8 +60,7 @@ public class McpController {
         // 2. 비동기 스레드에서 이벤트 및 초기화 메시지 처리
         new Thread(() -> {
             try {
-                // (선택) 연결 안정화를 위해 아주 잠깐 대기 (네트워크 상황에 따라 100~500ms)
-                Thread.sleep(200);
+                Thread.sleep(500);
 
                 // A. Endpoint 이벤트 전송 (필수)
                 String finalUrl = serverUrl + "/mcp/messages?id=" + id;
