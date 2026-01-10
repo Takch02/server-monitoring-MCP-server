@@ -105,7 +105,8 @@ public class McpController {
 
         switch (method) {
             case "initialize":
-                handleInitialize(emitter, idNode);
+                JsonNode params = request.path("params");
+                handleInitialize(emitter, idNode, params);
                 break;
             case "notifications/initialized":
                 // 초기화 완료 알림은 그냥 로그만 찍고 넘어감
@@ -130,9 +131,11 @@ public class McpController {
     // ========================================================================
 
     // [핸들러] 초기화 요청 (Handshake)
-    private void handleInitialize(SseEmitter emitter, JsonNode id) throws IOException {
+    private void handleInitialize(SseEmitter emitter, JsonNode id, JsonNode params) throws IOException {
+        String clientVersion = params.path("protocolVersion").asText("2025-03-26");
+        log.info("protocolVersion : {}", clientVersion);
         sendJsonRpcResponse(emitter, id, Map.of(
-                "protocolVersion", "2025-03-26",
+                "protocolVersion", clientVersion,
                 "capabilities", Map.of("tools", Map.of()),
                 "serverInfo", Map.of("name", "ServerDoctor-MCP", "version", "1.0.0")
         ));
