@@ -192,6 +192,9 @@ public class McpController {
         String toolName = request.path("params").path("name").asText();
         JsonNode args = request.path("params").path("arguments");
         String resultText;
+        // 🔍 [디버깅 핵심] Claude가 보낸 인자 전체를 로그로 찍어봅니다!
+        log.info("📥 수신된 Tool Name: {}", toolName);
+        log.info("📥 수신된 Arguments JSON: {}", args.toPrettyString());
 
         try {
             if ("ServerDoctor-diagnose_server".equals(toolName)) {
