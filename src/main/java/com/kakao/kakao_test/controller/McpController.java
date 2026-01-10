@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -180,7 +181,7 @@ public class McpController {
                                                 "serverUrl", Map.of("type", "string", "description", "서버 URL"),
                                                 "healthUrl", Map.of("type", "string", "description", "헬스 체크 URL")
                                         ),
-                                        "required", new String[]{"serverName", "serverUrl"}
+                                        "required", List.of("serverName", "serverUrl")
                                 )
                         )
                 }
