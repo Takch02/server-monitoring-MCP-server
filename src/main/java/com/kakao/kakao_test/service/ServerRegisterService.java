@@ -20,10 +20,10 @@ public class ServerRegisterService {
 
     private final TargetServerRepository targetServerRepository;
 
-    @Value("mcp.server-url")
+    @Value("${mcp.server-url}")
     private String mcpDomain;
 
-    @Value("forwarder.image-url")
+    @Value("${forwarder.image-url}")
     private String forwarderDomain;
     /**
      * 서버 등록
@@ -120,7 +120,7 @@ public class ServerRegisterService {
         FORWARDER_IMAGE=%s
         
         # (선택) 알림 받을 디스코드 웹훅
-        DISCORD_WEBHOOK_URL=
+        DISCORD_WEBHOOK_URL=디스코드 웹훅 URL
         ```
         
         ---

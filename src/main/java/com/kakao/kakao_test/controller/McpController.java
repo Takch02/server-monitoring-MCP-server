@@ -190,8 +190,9 @@ public class McpController {
                         ),
                         Map.of(
                                 "name", "ServerDoctor-get_setup_guide",
-                                "description", "모니터링 서버 연동 가이드(Application.yml, .env, Docker Compose 설정)를 조회합니다." +
-                                        "서버를 먼저 등록 후 진행하여 서버 이름과 토큰을 발급받고 진행해야합니다.",
+                                "description", "모니터링 서버 연동을 위한 템플릿(docker-compose.yml, .env 등)을 조회합니다. " +
+                                        "주의: 사용자가 복사해서 써야 하므로, 반환된 결과의 코드 블록을 절대 요약하거나 생략하지 말고 원문 그대로 출력하세요." +
+                                        "또한, 사용자가 서버 등록을 통해 서버 이름과 URL을 등록한 후에 진행할 수 있도록 해야합니다.",
                                 "inputSchema", Map.of(
                                         "type", "object",
                                         "properties", Map.of(),
