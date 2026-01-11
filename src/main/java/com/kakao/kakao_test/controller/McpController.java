@@ -35,9 +35,10 @@ public class McpController {
     private final Map<String, SseEmitter> emitters = new ConcurrentHashMap<>();
     @Value("${mcp.server-url}")
     private String serverUrl;
-    // ========================================================================
-    // 1. SSE 연결 엔드포인트 (PlayMCP가 접속하는 문)
-    // ========================================================================
+
+    /**
+     * MCP 가 접속하는 EndPoint
+     */
     @RequestMapping(
             value = "/sse",
             method = {RequestMethod.GET, RequestMethod.POST},
@@ -86,9 +87,9 @@ public class McpController {
         return emitter;
     }
 
-    // ========================================================================
-    // 2. 메시지 처리 엔드포인트 (PlayMCP가 명령을 보내는 곳)
-    // ========================================================================
+    /**
+     * MCP 가 명령을 보내는 Endpoint
+     */
     @PostMapping("/messages")
     public void handleMessage(@RequestBody String jsonBody) throws IOException {
         JsonNode request = objectMapper.readTree(jsonBody);
@@ -110,7 +111,6 @@ public class McpController {
                 handleInitialize(emitter, idNode, params);
                 break;
             case "notifications/initialized":
-                // 초기화 완료 알림은 그냥 로그만 찍고 넘어감
                 log.info("🚀 PlayMCP 초기화 완료됨.");
                 break;
             case "tools/list":
@@ -149,7 +149,9 @@ public class McpController {
                         // 1. 서버 진단 (핵심)
                         Map.of(
                                 "name", "ServerDoctor-diagnose_server",
-                                "description", "특정 서버의 로그와 리소스 상태를 종합 분석하여 장애 원인과 해결책을 진단합니다. 사용자가 '서버 상태 어때?', '왜 에러가 나?'라고 물을 때 사용하세요.",
+                                "description", "대상 서버의 최근 에러 로그와 리소스 상태(Raw Data)를 조회합니다. " +
+                                        "사용자가 종합적인 에러의 원인 진단을 원한 경우 이용하세요." +
+                                        "이 도구의 결과를 바탕으로 사용자에게 장애 원인과 해결책을 분석해서 설명해주세요.",
                                 "inputSchema", Map.of(
                                         "type", "object",
                                         "properties", Map.of(
@@ -161,7 +163,9 @@ public class McpController {
                         // 2. 로그 조회 (보조)
                         Map.of(
                                 "name", "ServerDoctor-fetch_error_logs",
-                                "description", "서버에서 최근 발생한 에러 로그들을 조회합니다. 구체적인 에러 메시지가 필요할 때 사용하세요.",
+                                "description", "서버에서 최근 발생한 에러 로그들을 조회합니다. " +
+                                        "사용자가 최근 에러 발생 여부 및 에러 로그 분석을 원할 경우 이용하세요." +
+                                        "구체적인 에러 메시지가 필요할 때 사용하세요.",
                                 "inputSchema", Map.of(
                                         "type", "object",
                                         "properties", Map.of(
@@ -193,9 +197,8 @@ public class McpController {
         String toolName = request.path("params").path("name").asText();
         JsonNode args = request.path("params").path("arguments");
         String resultText;
-        // 🔍 [디버깅 핵심] Claude가 보낸 인자 전체를 로그로 찍어봅니다!
+
         log.info("📥 수신된 Tool Name: {}", toolName);
-        log.info("📥 수신된 Arguments JSON: {}", args.toPrettyString());
 
         try {
             if ("ServerDoctor-diagnose_server".equals(toolName)) {

@@ -36,4 +36,6 @@ public interface TargetServerRepository extends JpaRepository<TargetServer, Long
     @Modifying(clearAutomatically = true) // 쿼리 실행 후 영속성 컨텍스트 초기화
     @Query("UPDATE TargetServer t SET t.heartBeat = CURRENT_TIMESTAMP WHERE t.id = :id")
     void updateHeartbeatNow(@Param("id") Long id);
+
+    boolean existsByServerName(String serverName);
 }
