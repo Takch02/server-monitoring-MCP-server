@@ -178,7 +178,10 @@ public class McpController {
                         // 3. 서버 등록 (사용자 서버 등록)
                         Map.of(
                                 "name", "ServerDoctor-register_server",
-                                "description", "모니터링할 새로운 대상 서버를 시스템에 등록합니다.",
+                                "description", "모니터링할 새로운 대상 서버를 시스템에 등록합니다." +
+                                        "사용자의 serverName, serverUrl, healthUrl(필수 아님) 정보가 필요합니다." +
+                                        "서버 등록에 성공하면 application.yml, docker-compose.yml, .env 설정을 알려주는 가이드도 함께 제공됩니다." +
+                                        "가이드는 요약없이 반드시 코드를 사용자에게 보여주며 복사/붙여넣기 할 수 있도록 보여줘야합니다.",
                                 "inputSchema", Map.of(
                                         "type", "object",
                                         "properties", Map.of(
