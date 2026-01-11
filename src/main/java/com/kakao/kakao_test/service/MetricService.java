@@ -98,6 +98,18 @@ public class MetricService {
 
         if (history.isEmpty()) return "데이터 없음";
 
+        // 1. 평균 CPU 사용량 계산
+        double avgCpu = history.stream()
+                .mapToDouble(ServerMetric::getCpuUsage)
+                .average()
+                .orElse(0.0);
+
+        // 2. 평균 메모리 사용률 계산 (%)
+        double avgMem = history.stream()
+                .mapToDouble(m -> ((double) m.getMemoryUsedMb() / m.getMemoryMaxMb()) * 100.0)
+                .average()
+                .orElse(0.0);
+
         // CPU가 80% 넘었던 순간이 있는지 카운팅
         long highCpuCount = history.stream()
                 .filter(m -> m.getCpuUsage() > 80.0)
@@ -108,16 +120,19 @@ public class MetricService {
                 .filter(m -> (m.getMemoryUsedMb() / m.getMemoryMaxMb() * 100.0) > 90.0)
                 .count();
 
+        // 4. 결과 문자열 포맷팅
+        String statsSummary = String.format("\n(평균 CPU: %.1f%% / 평균 RAM: %.1f%%)", avgCpu, avgMem);
+
         if (highCpuCount > 0 || highMemCount > 0) {
             double maxCpu = history.stream().mapToDouble(ServerMetric::getCpuUsage).max().orElse(0.0);
 
             return String.format(
-                    "⚠️ 최근 10분간 리소스 불안정:\n- CPU 80%% 초과: %d회 (최대 %.1f%%)\n- 메모리 90%% 초과: %d회",
-                    highCpuCount, maxCpu, highMemCount
+                    "⚠️ 최근 10분간 리소스 불안정:%s\n- CPU 80%% 초과: %d회 (최대 %.1f%%)\n- 메모리 90%% 초과: %d회",
+                    statsSummary, highCpuCount, maxCpu, highMemCount
             );
         }
 
-        return "✅ 최근 10분간 시스템 리소스 상태는 매우 안정적입니다.";
+        return "✅ 최근 10분간 시스템 리소스 상태는 매우 안정적입니다." + statsSummary;
     }
 
     // --- Private Helpers ---
