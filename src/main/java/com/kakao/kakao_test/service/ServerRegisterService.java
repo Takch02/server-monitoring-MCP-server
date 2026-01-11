@@ -78,9 +78,7 @@ public class ServerRegisterService {
             token = "서버 등록 후 발급받은 토큰";
         }
 
-        return String.format("""
-        ✅ **서버 [%s] 등록 성공!**
-        
+        return String.format(""" 
         모니터링을 시작하기 위해 대상 서버에 아래 3단계 설정을 적용해주세요.
         
         ---
@@ -164,6 +162,6 @@ public class ServerRegisterService {
         ```
         
         🚀 **설정 후 `docker-compose up -d`로 실행하면 자동으로 수집이 시작됩니다!**
-        """, serverName, serverName, token, mcpDomain, forwarderDomain);
+        """, serverName, token, mcpDomain, forwarderDomain);
     }
 }

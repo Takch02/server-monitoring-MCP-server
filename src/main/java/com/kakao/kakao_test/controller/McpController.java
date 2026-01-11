@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.kakao.kakao_test.dto.ErrorLogAnalysisDto;
 import com.kakao.kakao_test.dto.RegisterServerRequest;
+import com.kakao.kakao_test.dto.RegisterServerResponse;
 import com.kakao.kakao_test.service.LogService;
 import com.kakao.kakao_test.service.ServerDoctorService;
 import com.kakao.kakao_test.service.ServerRegisterService;
@@ -232,9 +233,10 @@ public class McpController {
 
                 // DB 저장
                 RegisterServerRequest req = new RegisterServerRequest(serverName, serverUrl, healthUrl);
-                serverRegisterService.registerServer(req);
+                RegisterServerResponse res = serverRegisterService.registerServer(req);
 
-                resultText = String.format("✅ 서버 [%s]가 성공적으로 등록되었습니다. (서버 URL: %s)", serverName, serverUrl);
+                resultText = String.format("✅ 서버 [%s]가 성공적으로 등록되었습니다. (서버 URL: %s, IngestToken : %s)\n" +
+                        "서버 가이드 : %s", serverName, serverUrl, res.getIngestToken(), res.getGuide());
 
             }
             else if ("ServerDoctor-get_setup_guide".equals(toolName)) {
