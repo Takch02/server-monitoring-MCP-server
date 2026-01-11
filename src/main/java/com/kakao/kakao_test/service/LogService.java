@@ -11,9 +11,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -82,9 +79,7 @@ public class LogService {
             String shortError = firstError.length() > 200
                     ? firstError.substring(0, 200) + "..."
                     : firstError;
-            String encodedWebhook = URLEncoder.encode(discordWebhookUrl, StandardCharsets.UTF_8);
-
-            String alertMsg = createDiscordMessage(serverName, encodedWebhook, shortError);
+            String alertMsg = createDiscordMessage(shortError);
 
             // 사용자 토큰으로 디스코드 알림 발송
             discordNotificationService.sendErrorAlert(discordWebhookUrl, serverName, alertMsg);
@@ -93,23 +88,11 @@ public class LogService {
         return new IngestResultDto(serverName, logsToSave.size(), "로그 저장 완료");
     }
 
-    private String createDiscordMessage(String serverName, String encodedWebhook, String shortError) {
-        String diagnoseUrl = String.format(
-                "%s/api/servers/%s/diagnose?webhook=%s",
-                myServerUrl, serverName, encodedWebhook
-        );
-
+    private String createDiscordMessage(String shortError) {
         return String.format("""
-            **에러 로그가 감지되었습니다!** 🚨
-            
             📋 **내용 요약:**
             `%s`
-            
-            💡 **원인을 알고 싶으신가요?**
-            👉 [**[여기]를 눌러 AI 정밀 진단 시작하기**](%s)
-            (클릭 시 브라우저가 열리며 분석이 시작됩니다)
-            """,
-                shortError, diagnoseUrl
+            """, shortError
         );
     }
 
