@@ -23,14 +23,15 @@ public class ServerRegisterService {
      */
     @Transactional
     public RegisterServerResponse registerServer(RegisterServerRequest req) {
-        if (req.getServerName() == null || req.getServerName().isBlank()) {
-            throw new IllegalArgumentException("serverName은 필수입니다.");
+        // 서버 이름 중복 처리
+        if (targetServerRepository.existsByServerName(req.getServerName())) {
+            throw new IllegalArgumentException("이미 등록된 서버 이름입니다: " + req.getServerName());
         }
         duplicateServer(req.getServerName(), req.getUrl());
         // 토큰 생성
         String token = UUID.randomUUID().toString();
 
-        TargetServer server = TargetServer.register(req,  token);
+        TargetServer server = TargetServer.register(req, token);
 
         targetServerRepository.save(server);
         log.info("✅ 서버 등록 완료: {}", server.getServerName());
