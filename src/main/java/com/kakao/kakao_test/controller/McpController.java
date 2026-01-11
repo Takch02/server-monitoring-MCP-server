@@ -187,6 +187,16 @@ public class McpController {
                                         ),
                                         "required", List.of("serverName", "serverUrl")
                                 )
+                        ),
+                        Map.of(
+                                "name", "ServerDoctor-get_setup_guide",
+                                "description", "모니터링 서버 연동 가이드(Application.yml, .env, Docker Compose 설정)를 조회합니다." +
+                                        "서버를 먼저 등록 후 진행하여 서버 이름과 토큰을 발급받고 진행해야합니다.",
+                                "inputSchema", Map.of(
+                                        "type", "object",
+                                        "properties", Map.of(),
+                                        "required", List.of()
+                                )
                         )
                 }
         ));
@@ -225,7 +235,12 @@ public class McpController {
 
                 resultText = String.format("✅ 서버 [%s]가 성공적으로 등록되었습니다. (서버 URL: %s)", serverName, serverUrl);
 
-            } else {
+            }
+            else if ("ServerDoctor-get_setup_guide".equals(toolName)) {
+                log.info("서버 등록 가이드라인 요청");
+                resultText = serverRegisterService.generateSetupGuide(null, null);
+            }
+            else {
                 resultText = "⚠️ 알 수 없는 도구입니다: " + toolName;
             }
         } catch (Exception e) {

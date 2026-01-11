@@ -10,4 +10,5 @@ public class RegisterServerResponse {
     private String url;
     private String healthPath;
     private String ingestToken; // 최초 1회 전달(데모)
+    private String guide;
 }
