@@ -17,6 +17,24 @@ spring:
       driver-class-name: com.mysql.cj.jdbc.Driver
       username: ${DB_USERNAME}
       password: ${DB_PASSWORD}
+    mvc:
+      async:
+        request-timeout: 300000
+
+    ai:
+      mcp:
+        server:
+          protocol: STATELESS
+          name: SpringServerDoctor
+          version: 1.0.0
+          capabilities:
+            tool: true
+            resource: false
+            prompt: false
+            completion: false
+
+          stateless:
+            mcp-endpoint: /mcp
 
 openai:
   api-key: ${OPENAI_API_KEY}
@@ -26,3 +44,10 @@ mcp:
 
 forwarder:
   image-url : ${FORWARDER_IMAGE_URL}
+
+tomcat:
+  connection-timeout: 300000  # 5분 (기본값보다 길게)
+  keep-alive-timeout: 300000  # 5분
+  servlet:
+    session:
+      timeout: 300m # 세션 만료 방지

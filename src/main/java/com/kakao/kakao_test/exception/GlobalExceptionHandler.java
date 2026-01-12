@@ -1,14 +1,15 @@
-package com.kakao.kakao_test.controller;
+package com.kakao.kakao_test.exception;
 
-import com.kakao.kakao_test.exception.NotFoundException;
-import com.kakao.kakao_test.exception.UnauthorizedException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.io.IOException;
 import java.util.Map;
 
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(NotFoundException.class)
@@ -33,5 +34,10 @@ public class GlobalExceptionHandler {
                 "error", "INTERNAL_SERVER_ERROR",
                 "message", e.getMessage()
         ));
+    }
+
+    @ExceptionHandler({IOException.class})
+    public void handleClientAbort() {
+        log.debug("SSE 연결 끊어짐");
     }
 }
