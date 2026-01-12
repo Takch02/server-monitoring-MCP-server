@@ -45,9 +45,3 @@ mcp:
 forwarder:
   image-url : ${FORWARDER_IMAGE_URL}
 
-tomcat:
-  connection-timeout: 300000  # 5분 (기본값보다 길게)
-  keep-alive-timeout: 300000  # 5분
-  servlet:
-    session:
-      timeout: 300m # 세션 만료 방지

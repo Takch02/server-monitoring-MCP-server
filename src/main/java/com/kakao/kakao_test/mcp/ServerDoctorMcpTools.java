@@ -21,7 +21,7 @@ public class ServerDoctorMcpTools {
 
     @McpTool(
         name = "ServerDoctor-diagnose_server",
-        description = "대상 서버의 최근 에러 로그와 리소스 상태를 조회합니다."
+        description = "대상 서버의 최근 에러 로그와 리소스 상태를 조회하여 종합적으로 분석합니다."
     )
     public String diagnoseServer(
         @McpToolParam(description = "진단할 서버 이름", required = true) String serverName
@@ -31,7 +31,7 @@ public class ServerDoctorMcpTools {
 
     @McpTool(
         name = "ServerDoctor-fetch_error_logs",
-        description = "서버에서 최근 발생한 에러 로그들을 조회합니다."
+        description = "서버에서 최근 발생한 에러 로그들을 조회 후 분석합니다."
     )
     public String fetchErrorLogs(
         @McpToolParam(description = "대상 서버 이름", required = true) String serverName
@@ -60,7 +60,7 @@ public class ServerDoctorMcpTools {
 
     @McpTool(
         name = "ServerDoctor-get_setup_guide",
-        description = "모니터링 연동 템플릿을 조회합니다. 반환된 코드를 요약 없이 그대로 보여주세요."
+        description = "서버 모니터링을 시작하는 방법을 보여줍니다. Application.yml, docker-compose.yml, .env 설정에 대해 알려줍니다."
     )
     public String getSetupGuide() {
         return serverRegisterService.generateSetupGuide(null, null);
