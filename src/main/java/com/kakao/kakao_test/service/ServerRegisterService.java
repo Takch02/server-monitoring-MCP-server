@@ -83,7 +83,7 @@ public class ServerRegisterService {
         
         ---
         
-        ### 1️⃣ Spring Boot 설정 (`application.yml`)
+        ### 1️⃣ Spring Boot 설정 (`application.yml, build.gradle`)
         로그가 파일로 남고, Actuator가 9090 포트로 열리도록 설정합니다.
         
         ```yaml
@@ -103,6 +103,10 @@ public class ServerRegisterService {
           endpoint:
             health:
               show-details: always
+        ```
+        ```
+        # 의존성 추가 (성능 지표 확인용)
+        implementation 'org.springframework.boot:spring-boot-starter-actuator'
         ```
         
         ---
