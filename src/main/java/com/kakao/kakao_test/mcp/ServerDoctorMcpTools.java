@@ -3,6 +3,7 @@ package com.kakao.kakao_test.mcp;
 import com.kakao.kakao_test.dto.ErrorLogAnalysisDto;
 import com.kakao.kakao_test.dto.RegisterServerRequest;
 import com.kakao.kakao_test.dto.RegisterServerResponse;
+import com.kakao.kakao_test.service.HealthService;
 import com.kakao.kakao_test.service.LogService;
 import com.kakao.kakao_test.service.ServerDoctorService;
 import com.kakao.kakao_test.service.ServerRegisterService;
@@ -18,6 +19,7 @@ public class ServerDoctorMcpTools {
     private final ServerDoctorService serverDoctorService;
     private final LogService logService;
     private final ServerRegisterService serverRegisterService;
+    private final HealthService healthService;
 
     @McpTool(
         name = "ServerDoctor-diagnose_server",
@@ -34,7 +36,7 @@ public class ServerDoctorMcpTools {
         description = "서버에서 최근 발생한 에러 로그들을 조회 후 분석합니다."
     )
     public String fetchErrorLogs(
-        @McpToolParam(description = "대상 서버 이름", required = true) String serverName
+        @McpToolParam(description = "대상 서버 이름") String serverName
     ) {
         ErrorLogAnalysisDto logs = logService.analyzeErrorLogs(serverName);
         return (logs.getErrorCount() == 0) ? "발견된 에러 로그가 없습니다." : logs.toString();
@@ -45,16 +47,25 @@ public class ServerDoctorMcpTools {
         description = "모니터링할 새로운 대상 서버를 등록하고, 연동 가이드(yml, env 등)를 생성합니다."
     )
     public String registerServer(
-        @McpToolParam(description = "서버 고유 이름", required = true) String serverName,
-        @McpToolParam(description = "서버 URL", required = true) String serverUrl
+        @McpToolParam(description = "서버 고유 이름") String serverName
     ) {
-        RegisterServerRequest req = new RegisterServerRequest(serverName, serverUrl);
+        RegisterServerRequest req = new RegisterServerRequest(serverName);
         RegisterServerResponse res = serverRegisterService.registerServer(req);
 
         return String.format(
-            "✅ 서버 [%s]가 성공적으로 등록되었습니다. (서버 URL: %s, IngestToken: %s)\n서버 가이드:\n%s",
-            serverName, serverUrl, res.getIngestToken(), res.getGuide()
+            "✅ 서버 [%s]가 성공적으로 등록되었습니다. (IngestToken: %s)\n서버 가이드:\n%s",
+            serverName, res.getIngestToken(), res.getGuide()
         );
+    }
+
+    @McpTool(
+            name = "ServerDoctor-get_health_status",
+            description = "서버의 현재 Health 상태(UP/DOWN), 마지막 체크 시각, latency, stale 여부(60초 기준)를 반환합니다."
+    )
+    public String getHealthStatus(
+            @McpToolParam(description = "대상 서버 이름") String serverName
+    ) {
+        return healthService.getHealthStatusForMcp(serverName);
     }
 
     @McpTool(

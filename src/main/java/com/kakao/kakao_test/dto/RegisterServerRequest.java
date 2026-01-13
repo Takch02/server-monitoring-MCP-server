@@ -16,8 +16,4 @@ public class RegisterServerRequest {
     @Size(min = 3, max = 30)
     private String serverName;
 
-
-    @NotNull
-    @NotBlank
-    private String url;
 }

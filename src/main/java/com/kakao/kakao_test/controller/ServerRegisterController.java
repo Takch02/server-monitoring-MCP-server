@@ -20,10 +20,5 @@ public class ServerRegisterController {
         return serverRegisterService.registerServer(req);
     }
 
-    // URL 갱신 등
-    @PatchMapping("/servers/{name}/url")
-    public void updateUrl(@PathVariable String name, @RequestBody UpdateServerUrlRequest req) {
-        serverRegisterService.updateServerUrl(name, req.getUrl());
-    }
 
 }

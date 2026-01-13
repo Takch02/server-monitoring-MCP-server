@@ -34,7 +34,7 @@ public class ServerRegisterService {
         if (targetServerRepository.existsByServerName(req.getServerName())) {
             throw new IllegalArgumentException("이미 등록된 서버 이름입니다: " + req.getServerName());
         }
-        duplicateServer(req.getServerName(), req.getUrl());
+        duplicateServer(req.getServerName());
         // 토큰 생성
         String token = UUID.randomUUID().toString();
 
@@ -45,7 +45,6 @@ public class ServerRegisterService {
 
         return new RegisterServerResponse(
                 server.getServerName(),
-                req.getUrl(),
                 token,
                 generateSetupGuide(server.getServerName(), server.getMcpToken())
         );
@@ -54,20 +53,12 @@ public class ServerRegisterService {
     /**
      * 서버 등록 전 "이름 + url" 이 중복되는지 탐색
      */
-    private void duplicateServer(String serverName, String url) {
-        if (targetServerRepository.findByServerNameAndServerUrl(serverName, url).isPresent()) {
-            throw new DuplicationServer("이미 존재하는 서버입니다. 서버 이름 : " + serverName + ", url : " + url);
+    private void duplicateServer(String serverName) {
+        if (targetServerRepository.findByServerName(serverName).isPresent()) {
+            throw new DuplicationServer("이미 존재하는 서버입니다. 서버 이름 : " + serverName);
         }
     }
 
-    /**
-     * 서버 URL 수정
-     */
-    @Transactional
-    public void updateServerUrl(String name, String url) {
-        TargetServer server = targetServerRepository.getByServerName(name);
-        server.updateUrl(url);
-    }
     // 📋 마크다운 가이드 생성 메서드
     public String generateSetupGuide(String serverName, String token) {
         if (serverName == null || serverName.isEmpty()) {

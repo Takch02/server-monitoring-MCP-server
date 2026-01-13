@@ -237,7 +237,7 @@ public class McpController {
                 log.info("📝 서버 등록: {}", serverName);
 
                 // DB 저장
-                RegisterServerRequest req = new RegisterServerRequest(serverName, serverUrl);
+                RegisterServerRequest req = new RegisterServerRequest(serverName);
                 RegisterServerResponse res = serverRegisterService.registerServer(req);
 
                 resultText = String.format("✅ 서버 [%s]가 성공적으로 등록되었습니다. (서버 URL: %s, IngestToken : %s)\n" +

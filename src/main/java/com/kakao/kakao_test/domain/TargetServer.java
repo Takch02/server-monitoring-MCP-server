@@ -26,9 +26,6 @@ public class TargetServer {
     private String serverName;
 
     @Column(unique = true, nullable = false)
-    private String serverUrl;
-
-    @Column(unique = true, nullable = false)
     private String mcpToken;         // 로그 수신 인증용
 
     private LocalDateTime heartBeat;  // 최근 수신받은 시간
@@ -47,29 +44,16 @@ public class TargetServer {
     }
 
     @Builder
-    public TargetServer(String serverName, String serverUrl, String mcpToken) {
+    public TargetServer(String serverName, String mcpToken) {
         this.serverName = serverName;
-        this.serverUrl = normalizeBaseUrl(serverUrl);
         this.mcpToken = mcpToken;
         this.heartBeat = LocalDateTime.now();
-    }
-
-
-    public void updateUrl(String newUrl) {
-        this.serverUrl = normalizeBaseUrl(newUrl);
-    }
-
-    private String normalizeBaseUrl(String u) {
-        if (u == null) return "";
-        // 끝 슬래시 제거
-        return u.endsWith("/") ? u.substring(0, u.length() - 1) : u;
     }
 
     public static TargetServer register(RegisterServerRequest req, String token) {
         return TargetServer.builder()
                 .serverName(req.getServerName())
                 .mcpToken(token) // 토큰 저장
-                .serverUrl(req.getUrl())
                 .build();
     }
 }

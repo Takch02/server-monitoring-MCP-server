@@ -21,11 +21,6 @@ public interface TargetServerRepository extends JpaRepository<TargetServer, Long
 
     Optional<TargetServer> findByServerName(String serverName);
 
-    /**
-     * 서버 중복 등록을 막기위한 쿼리문
-     */
-    Optional<TargetServer> findByServerNameAndServerUrl(String serverName, String serverUrl);
-
 
     /**
      * 로그 수신 후 최근 수신 시간을 변경함.

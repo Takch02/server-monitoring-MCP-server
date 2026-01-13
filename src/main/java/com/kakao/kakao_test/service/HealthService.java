@@ -17,6 +17,7 @@ public class HealthService {
 
     private final TargetServerRepository targetServerRepository;
     private final ServerHealthEventRepository healthEventRepository;
+    private static final int STALE_SECONDS = 60; // 60초가 지나면 오래된 정보로 인식하여 서버가 죽었다 판단
 
     @Transactional
     public void saveHealth(String serverName, HealthIngestDto dto, String token) {
@@ -45,6 +46,35 @@ public class HealthService {
 
         server.updateHealthSnapshot(newStatus, dto.latencyMs(), dto.httpStatus());
         log.info("Server Health Check 완료 (서버 : {})", serverName);
+    }
+
+    /**
+     * 최근 수신된 Health Check 정보를 반환
+     */
+    @Transactional(readOnly = true)
+    public String getHealthStatusForMcp(String serverName) {
+        ServerHealthEvent latestOpt = healthEventRepository.findTop1ByServerNameOrderByTsDesc(serverName).orElseThrow(
+                () -> new IllegalArgumentException("Health 데이터가 없습니다. forwarder HEALTH_URL 및 health ingest 설정을 확인하세요. (serverName=" +
+                        serverName + ")")
+        );
+
+
+        long now = System.currentTimeMillis();
+        long ageMs = now - latestOpt.getTs();
+        boolean stale = ageMs > (STALE_SECONDS * 1000L);
+
+        String lastAt = java.time.Instant.ofEpochMilli(latestOpt.getTs()).toString();
+
+        return String.format(
+                "Health: %s\nLastCheck: %s (%.1fs ago)\nHTTP: %d\nLatency: %dms\nStale(>%ds): %s",
+                latestOpt.getStatus(),
+                lastAt,
+                ageMs / 1000.0,
+                latestOpt.getHttpStatus(),
+                latestOpt.getLatencyMs(),
+                STALE_SECONDS,
+                stale ? "YES" : "NO"
+        );
     }
 
     private String normalizeStatus(String status, int httpStatus) {
