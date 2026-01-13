@@ -42,3 +42,6 @@ openai:
 forwarder:
   image-url : ${FORWARDER_IMAGE_URL}
 
+mcp:
+  server-url: ${AWS_URL}
+
