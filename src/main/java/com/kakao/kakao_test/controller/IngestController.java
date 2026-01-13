@@ -1,8 +1,10 @@
 package com.kakao.kakao_test.controller;
 
+import com.kakao.kakao_test.dto.HealthIngestDto;
 import com.kakao.kakao_test.dto.IngestResultDto;
 import com.kakao.kakao_test.dto.LogEventDto;
 import com.kakao.kakao_test.dto.MetricIngestDto;
+import com.kakao.kakao_test.service.HealthService;
 import com.kakao.kakao_test.service.LogService;
 import com.kakao.kakao_test.service.MetricService;
 import jdk.jfr.Description;
@@ -20,6 +22,7 @@ public class IngestController {
 
     private final MetricService metricService;
     private final LogService logService;
+    private final HealthService healthService;
 
     // 로그 수신(PUSH): 포워더/사용자 서버가 호출
     @PostMapping("/servers/{name}/ingest/logs")
@@ -40,6 +43,16 @@ public class IngestController {
 
         metricService.saveMetric(serverName, dto, token, discordWebhookUrl);
 
+        return ResponseEntity.ok("ok");
+    }
+
+    @PostMapping("/servers/{serverName}/ingest/health")
+    public ResponseEntity<String> ingestHealth(
+            @PathVariable String serverName,
+            @RequestHeader("X-MCP-TOKEN") String token,
+            @RequestBody HealthIngestDto dto) {
+
+        healthService.saveHealth(serverName, dto, token);
         return ResponseEntity.ok("ok");
     }
 }

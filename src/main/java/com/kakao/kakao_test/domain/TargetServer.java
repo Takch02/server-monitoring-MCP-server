@@ -5,6 +5,8 @@ import jakarta.persistence.*;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
+
 import java.time.LocalDateTime;
 
 /**
@@ -13,8 +15,9 @@ import java.time.LocalDateTime;
 @Entity
 @NoArgsConstructor
 @Getter
+@Setter
 @Table(name = "target_server")
-public class TargetServer extends BaseTimeEntity {
+public class TargetServer {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -23,20 +26,30 @@ public class TargetServer extends BaseTimeEntity {
     private String serverName;
 
     @Column(unique = true, nullable = false)
-    private String serverUrl;              // ngrok 등으로 변경 가능하므로 volatile
-
-    private String healthPath;
+    private String serverUrl;
 
     @Column(unique = true, nullable = false)
-    private String mcpToken;         // 로그 수신 인증용(데모)
+    private String mcpToken;         // 로그 수신 인증용
 
-    private LocalDateTime heartBeat;
+    private LocalDateTime heartBeat;  // 최근 수신받은 시간
+
+    private String lastHealthStatus;   // UP/DOWN/UNKNOWN
+
+    private Integer lastHealthHttpStatus;    // 200/503/0
+
+    private Long lastHealthLatencyMs;        // ms
+
+    public void updateHealthSnapshot(String newStatus, long latencyMs, int status) {
+        this.lastHealthStatus = newStatus;
+        this.lastHealthHttpStatus = status;
+        this.lastHealthLatencyMs = latencyMs;
+        this.heartBeat = LocalDateTime.now();
+    }
 
     @Builder
-    public TargetServer(String serverName, String serverUrl, String healthPath, String mcpToken) {
+    public TargetServer(String serverName, String serverUrl, String mcpToken) {
         this.serverName = serverName;
         this.serverUrl = normalizeBaseUrl(serverUrl);
-        this.healthPath = (healthPath == null || healthPath.isBlank()) ? "/actuator/health" : healthPath;
         this.mcpToken = mcpToken;
         this.heartBeat = LocalDateTime.now();
     }
@@ -56,12 +69,7 @@ public class TargetServer extends BaseTimeEntity {
         return TargetServer.builder()
                 .serverName(req.getServerName())
                 .mcpToken(token) // 토큰 저장
-                .healthPath(req.getHealthPath())
                 .serverUrl(req.getUrl())
                 .build();
-    }
-
-    public void updateHeartbeat() {
-        this.heartBeat = LocalDateTime.now();
     }
 }

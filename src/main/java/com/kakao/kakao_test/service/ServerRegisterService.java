@@ -46,7 +46,6 @@ public class ServerRegisterService {
         return new RegisterServerResponse(
                 server.getServerName(),
                 req.getUrl(),
-                req.getHealthPath(),
                 token,
                 generateSetupGuide(server.getServerName(), server.getMcpToken())
         );

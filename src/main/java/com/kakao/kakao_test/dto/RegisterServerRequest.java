@@ -20,6 +20,4 @@ public class RegisterServerRequest {
     @NotNull
     @NotBlank
     private String url;
-
-    private String healthPath;
 }

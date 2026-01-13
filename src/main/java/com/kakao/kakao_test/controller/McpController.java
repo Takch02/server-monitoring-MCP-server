@@ -36,9 +36,6 @@ public class McpController {
 
     // 현재 활성화된 단일 Emitter 관리
     private final ConcurrentMap<String, SseEmitter> emitters = new ConcurrentHashMap<>();
-    @Value("${mcp.server-url}")
-    private String serverUrl;
-
     /**
      * MCP 가 접속하는 EndPoint
      */
@@ -236,12 +233,11 @@ public class McpController {
             } else if ("ServerDoctor_register_server".equals(toolName)) {
                 String serverName = args.path("serverName").asText();
                 String serverUrl = args.path("serverUrl").asText(null);
-                String healthUrl = args.path("healthUrl").asText(null);
 
                 log.info("📝 서버 등록: {}", serverName);
 
                 // DB 저장
-                RegisterServerRequest req = new RegisterServerRequest(serverName, serverUrl, healthUrl);
+                RegisterServerRequest req = new RegisterServerRequest(serverName, serverUrl);
                 RegisterServerResponse res = serverRegisterService.registerServer(req);
 
                 resultText = String.format("✅ 서버 [%s]가 성공적으로 등록되었습니다. (서버 URL: %s, IngestToken : %s)\n" +

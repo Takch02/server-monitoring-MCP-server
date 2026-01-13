@@ -1,9 +1,7 @@
 package com.kakao.kakao_test.controller;
 
 import com.kakao.kakao_test.dto.ErrorLogAnalysisDto;
-import com.kakao.kakao_test.dto.HealthCheckDto;
 import com.kakao.kakao_test.dto.ServerMetricsDto;
-import com.kakao.kakao_test.service.HealthCheckService;
 import com.kakao.kakao_test.service.LogService;
 import com.kakao.kakao_test.service.MetricService;
 import jdk.jfr.Description;
@@ -19,7 +17,6 @@ public class LLMToolController {
 
     private final LogService logService;
     private final MetricService metricService;
-    private final HealthCheckService healthCheckService;
 
     /**
      * 최근 [ERROR] 발생 로그를 반환
@@ -27,14 +24,6 @@ public class LLMToolController {
     @GetMapping("/servers/{name}/errors")
     public ResponseEntity<ErrorLogAnalysisDto> errors(@PathVariable String name){
         return ResponseEntity.ok(logService.analyzeErrorLogs(name));
-    }
-
-    /**
-     * 서버 헬스체크
-     */
-    @GetMapping("/servers/{name}/health")
-    public ResponseEntity<HealthCheckDto> health(@PathVariable String name) {
-        return ResponseEntity.ok(healthCheckService.checkHealth(name));
     }
 
     /**

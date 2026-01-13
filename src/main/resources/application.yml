@@ -39,9 +39,6 @@ spring:
 openai:
   api-key: ${OPENAI_API_KEY}
 
-mcp:
-  server-url : ${AWS_URL}
-
 forwarder:
   image-url : ${FORWARDER_IMAGE_URL}
 

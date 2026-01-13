@@ -46,10 +46,9 @@ public class ServerDoctorMcpTools {
     )
     public String registerServer(
         @McpToolParam(description = "서버 고유 이름", required = true) String serverName,
-        @McpToolParam(description = "서버 URL", required = true) String serverUrl,
-        @McpToolParam(description = "헬스 체크 URL", required = false) String healthUrl
+        @McpToolParam(description = "서버 URL", required = true) String serverUrl
     ) {
-        RegisterServerRequest req = new RegisterServerRequest(serverName, serverUrl, healthUrl);
+        RegisterServerRequest req = new RegisterServerRequest(serverName, serverUrl);
         RegisterServerResponse res = serverRegisterService.registerServer(req);
 
         return String.format(

@@ -27,8 +27,6 @@ public class LogService {
     private final DiscordNotificationService discordNotificationService;
     private final ServerHeartbeatService serverHeartbeatService;
 
-    @Value("${mcp.server-url}")
-    private String myServerUrl;
     /**
      * 서버 이름 가져오기 (없으면 에러)
      */
@@ -64,9 +62,9 @@ public class LogService {
                         .build())
                 .toList();
 
-        log.info("{} 서버로부터 수신된 {} 개의 로그를 저장합니다.", serverName, logsToSave.size());
         // 3. DB 저장 (Batch Insert 효과)
         serverLogRepository.saveAll(logsToSave);
+        log.info("{} 서버로부터 수신된 {} 개의 로그를 저장", serverName, logsToSave.size());
 
         // 4. 에러 감지 및 알림 (단순 텍스트 전송)
         List<String> errorLogs = events.stream()

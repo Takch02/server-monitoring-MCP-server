@@ -31,7 +31,6 @@ public class MetricService {
      */
     @Transactional
     public void saveMetric(String serverName, MetricIngestDto dto, String mcpToken, String discordWebhookUrl) {
-        log.info("Metric 수신: {}", serverName);
 
         // 1. 서버 조회 및 토큰 검증
         TargetServer server = targetServerRepository.getByServerName(serverName);
@@ -63,6 +62,7 @@ public class MetricService {
 
             // DTO에 담겨온 사용자 토큰으로 발송
             discordNotificationService.sendErrorAlert(discordWebhookUrl, serverName, alertMsg);
+            log.info("Metric 저장 (서버: {})ㄴ", serverName);
         }
     }
 
