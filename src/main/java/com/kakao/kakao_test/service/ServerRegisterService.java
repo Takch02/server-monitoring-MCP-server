@@ -67,7 +67,6 @@ public class ServerRegisterService {
         if (token == null || token.isEmpty()) {
             token = "서버 등록 후 발급받은 토큰";
         }
-
         return String.format(""" 
         [IMPORTANT: COPY-PASTE]
         아래 내용은 사용자가 그대로 복사-붙여넣기 해야 합니다.
@@ -111,6 +110,7 @@ public class ServerRegisterService {
         ```properties
         # MCP 설정
         SERVER_NAME=%s
+        # INGEST_TOKEN 은 MCP 서버와 사용자님 서버를 검증하기 위한 토큰으로 반드시 적용해야합니다.
         INGEST_TOKEN=%s
         MCP_DOMAIN=%s
         FORWARDER_IMAGE=%s
@@ -125,8 +125,6 @@ public class ServerRegisterService {
         기존 앱(`target`)과 수집기(`forwarder`)가 **로그 볼륨**을 공유해야 합니다.
         
         ```yaml
-        version: '3.8'
-        
         services:
           # 🟢 1. 사용자 앱 (target)
           target:
@@ -146,15 +144,14 @@ public class ServerRegisterService {
             volumes:
               - logs:/logs:ro # target이 쓴 로그를 읽기 전용으로 마운트
             environment:
-              MCP_LOG_INGEST_URL: "http://${MCP_DOMAIN}/api/servers/${SERVER_NAME}/ingest/logs"
-              MCP_METRIC_INGEST_URL: "http://${MCP_DOMAIN}/api/servers/${SERVER_NAME}/ingest/metrics"
-              MCP_HEALTH_INGEST_URL: "http://${MCP_DOMAIN}/api/servers/${SERVER_NAME}/ingest/health"
+              MCP_LOG_INGEST_URL: "${MCP_DOMAIN}/api/servers/${SERVER_NAME}/ingest/logs"
+              MCP_METRIC_INGEST_URL: "${MCP_DOMAIN}/api/servers/${SERVER_NAME}/ingest/metrics"
+              MCP_HEALTH_INGEST_URL: "${MCP_DOMAIN}/api/servers/${SERVER_NAME}/ingest/health"
               HEALTH_URL: "http://target:9090/actuator/health"  # 헬스 체크 대상 URL
-              MCP_TOKEN: "${INGEST_TOKEN}"
-              DISCORD_WEBHOOK_URL: "${DISCORD_WEBHOOK_URL}"
+              MCP_TOKEN: "${INGEST_TOKEN}" # MCP 서버 검증용 토큰
+              DISCORD_WEBHOOK_URL: "${DISCORD_WEBHOOK_URL}" # (선택) 에러 발생 시 디스코드로 요청
               LOG_PATH: "/logs/application.log"
-              # target 컨테이너의 9090 포트로 접속
-              ACTUATOR_URL: "http://target:9090/actuator/metrics"
+              ACTUATOR_URL: "http://target:9090/actuator/metrics" # CPU, RAM 체크 대상 URL
             restart: unless-stopped
         
         volumes:
@@ -163,5 +160,6 @@ public class ServerRegisterService {
         
         🚀 **설정 후 `docker-compose up -d`로 실행하면 자동으로 수집이 시작됩니다!**
         """, serverName, token, mcpDomain, forwarderDomain);
+
     }
 }
