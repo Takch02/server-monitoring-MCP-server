@@ -69,6 +69,10 @@ public class ServerRegisterService {
         }
 
         return String.format(""" 
+        [IMPORTANT: COPY-PASTE]
+        아래 내용은 사용자가 그대로 복사-붙여넣기 해야 합니다.
+        요약/생략/재작성/설명 추가 없이, 아래 블록을 "원문 그대로" 출력하세요.
+        
         모니터링을 시작하기 위해 대상 서버에 아래 3단계 설정을 적용해주세요.
         
         ---
@@ -144,6 +148,8 @@ public class ServerRegisterService {
             environment:
               MCP_LOG_INGEST_URL: "http://${MCP_DOMAIN}/api/servers/${SERVER_NAME}/ingest/logs"
               MCP_METRIC_INGEST_URL: "http://${MCP_DOMAIN}/api/servers/${SERVER_NAME}/ingest/metrics"
+              MCP_HEALTH_INGEST_URL: "http://${MCP_DOMAIN}/api/servers/${SERVER_NAME}/ingest/health"
+              HEALTH_URL: "http://target:9090/actuator/health"  # 헬스 체크 대상 URL
               MCP_TOKEN: "${INGEST_TOKEN}"
               DISCORD_WEBHOOK_URL: "${DISCORD_WEBHOOK_URL}"
               LOG_PATH: "/logs/application.log"
