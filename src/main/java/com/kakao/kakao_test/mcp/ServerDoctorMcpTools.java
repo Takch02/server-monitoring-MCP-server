@@ -21,12 +21,38 @@ public class ServerDoctorMcpTools {
     private final ServerRegisterService serverRegisterService;
     private final HealthService healthService;
 
+    /**
+     * 데모 서버 테스트용 tool
+     */
+    @McpTool(
+            name = "ServerDoctor-list_demo_servers",
+            description = "PlayMCP 원격 환경에서 즉시 체험 가능한 데모 서버 목록을 반환합니다. 실제 사용자 서버 목록은 반환하지 않습니다."
+    )
+    public String listDemoServers() {
+
+        String[] demos = {"demo", "target"};
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("즉시 체험 가능한 데모 서버 목록입니다.\n")
+                .append("""
+                        아래 serverName으로 get_health_status / diagnose_server 를 호출해 보세요.
+                        (demo 서버는 현재 실행되고 있는 서버, target 서버는 현재 실행중이 아닌 서버입니다.)
+                        
+                        """);
+
+        for (String s : demos) {
+            sb.append("=== ").append(s).append(" ===\n");
+            sb.append(healthService.getHealthStatusForMcp(s)).append("\n\n");
+        }
+        return sb.toString();
+    }
+
     @McpTool(
         name = "ServerDoctor-diagnose_server",
         description = "대상 서버의 최근 에러 로그와 리소스 상태를 조회하여 종합적으로 분석합니다."
     )
     public String diagnoseServer(
-        @McpToolParam(description = "진단할 서버 이름", required = true) String serverName
+        @McpToolParam(description = "진단할 서버 이름") String serverName
     ) {
         return serverDoctorService.diagnoseForMcp(serverName);
     }
