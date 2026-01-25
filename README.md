@@ -6,6 +6,11 @@
 [![MCP](https://img.shields.io/badge/Protocol-MCP-green)](https://modelcontextprotocol.io/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
+### 자세한 설명 블로그
+
+[Spring 서버 진단 MCP 개발(Forwarder 편)](https://velog.io/@takch02/MCP-Spring-서버-진단-MCP-개발완료)
+
+
 ## 📖 프로젝트 소개 (Overview)
 
 **Server Doctor**는 **MCP(Model Context Protocol)** 를 활용하여, LLM(ChatGPT, Claude 등)이 개발자의 로컬 또는 배포된 **Spring Boot 서버의 상태(Health)와 에러 로그(Logs)** 를 실시간으로 분석하고 진단해주는 도구입니다.
