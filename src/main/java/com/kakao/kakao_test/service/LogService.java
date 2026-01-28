@@ -52,19 +52,21 @@ public class LogService {
         // 1. 하트비트 갱신 (x-lock 을 얻어야 하므로 다른 트렌젝션으로 빼며 데드락을 회피)
         serverHeartbeatService.updateHeartbeatQuickly(server.getId());
 
-        // 2. DTO -> Entity 변환
-        List<ServerLog> logsToSave = events.stream()
-                .map(e -> ServerLog.builder()
-                        .server(server)
-                        .level(e.getLevel())
-                        .message(e.getMessage())
-                        .occurredAt(convertTimestamp(e.getTs()))
-                        .build())
-                .toList();
-
-        // 3. DB 저장 (Batch Insert 효과)
-        serverLogRepository.saveAll(logsToSave);
-        log.info("{} 서버로부터 수신된 {} 개의 로그를 저장", serverName, logsToSave.size());
+        for (LogEventDto e : events) {
+            if (e.getEventId() == null || e.getEventId().isBlank()) {
+                continue;
+            }
+            // eventId 가 중복될 경우 무시하는 쿼리를 날림. (Forwarder의 재전송 로직으로 중복 전송 될 수 있음)
+            serverLogRepository.insertIgnoreDuplicate(
+                    e.getEventId(),
+                    server.getId(),
+                    e.getLevel(),
+                    e.getMessage(),
+                    convertTimestamp(e.getTs())
+            );
+        }
+        log.info("{} 서버로부터 로그 {}개 수신됨",
+                serverName, events.size());
 
         // 4. 에러 감지 및 알림 (단순 텍스트 전송)
         List<String> errorLogs = events.stream()
@@ -72,6 +74,12 @@ public class LogService {
                 .map(LogEventDto::getMessage)
                 .toList();
 
+        sendDiscordMessage(serverName, discordWebhookUrl, errorLogs);
+
+        return new IngestResultDto(serverName, events.size(), "로그 수신 완료");
+    }
+
+    private void sendDiscordMessage(String serverName, String discordWebhookUrl, List<String> errorLogs) {
         if (!errorLogs.isEmpty()) {
             String firstError = errorLogs.getFirst();
             String shortError = firstError.length() > 200
@@ -82,8 +90,6 @@ public class LogService {
             // 사용자 토큰으로 디스코드 알림 발송
             discordNotificationService.sendErrorAlert(discordWebhookUrl, serverName, alertMsg);
         }
-
-        return new IngestResultDto(serverName, logsToSave.size(), "로그 저장 완료");
     }
 
     private String createDiscordMessage(String shortError) {

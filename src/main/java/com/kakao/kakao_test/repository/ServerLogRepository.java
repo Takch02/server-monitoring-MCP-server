@@ -4,7 +4,11 @@ import com.kakao.kakao_test.domain.ServerLog;
 import com.kakao.kakao_test.domain.TargetServer;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface ServerLogRepository extends JpaRepository<ServerLog, Long> {
@@ -13,4 +17,18 @@ public interface ServerLogRepository extends JpaRepository<ServerLog, Long> {
     
     // 특정 서버의 에러 로그만 최신순 조회
     List<ServerLog> findByServerAndLevelOrderByOccurredAtDesc(TargetServer server, String level, Pageable pageable);
+
+    @Modifying
+    @Query(value = """
+        INSERT INTO server_log (event_id, server_id, level, message, created_at, occurred_at)
+        VALUES (:eventId, :serverId, :level, :message, NOW(), :occurredAt)
+        ON DUPLICATE KEY UPDATE event_id = event_id
+        """, nativeQuery = true)
+    void insertIgnoreDuplicate(
+            @Param("eventId") String eventId,
+            @Param("serverId") Long serverId,
+            @Param("level") String level,
+            @Param("message") String message,
+            @Param("occurredAt") LocalDateTime occurredAt
+    );
 }

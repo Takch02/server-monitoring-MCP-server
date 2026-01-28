@@ -13,12 +13,11 @@ import org.springframework.web.bind.annotation.*;
 public class ServerRegisterController {
 
     private final ServerRegisterService serverRegisterService;
-
     // 서버 등록
     @PostMapping("/servers")
     public RegisterServerResponse register(@RequestBody RegisterServerRequest req) {
+
         return serverRegisterService.registerServer(req);
     }
-
 
 }

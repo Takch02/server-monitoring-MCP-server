@@ -9,6 +9,7 @@ import com.kakao.kakao_test.service.LogService;
 import com.kakao.kakao_test.service.MetricService;
 import jdk.jfr.Description;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,11 +27,12 @@ public class IngestController {
 
     // 로그 수신(PUSH): 포워더/사용자 서버가 호출
     @PostMapping("/servers/{name}/ingest/logs")
-    public IngestResultDto ingestLogs(@PathVariable("name") String serverName,
-                                      @RequestHeader("X-MCP-TOKEN") String token,
-                                      @RequestBody List<LogEventDto> events,
-                                      @RequestHeader(value = "X-DISCORD-WEBHOOK-URL", required = false) String discordWebhookUrl) {
-        return logService.ingestLogs(serverName, token, discordWebhookUrl, events);
+    public ResponseEntity<?> ingestLogs(@PathVariable("name") String serverName,
+                                                      @RequestHeader("X-MCP-TOKEN") String token,
+                                                      @RequestBody List<LogEventDto> events,
+                                                      @RequestHeader(value = "X-DISCORD-WEBHOOK-URL", required = false) String discordWebhookUrl) {
+        //return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        return ResponseEntity.ok(logService.ingestLogs(serverName, token, discordWebhookUrl, events));
     }
 
 
