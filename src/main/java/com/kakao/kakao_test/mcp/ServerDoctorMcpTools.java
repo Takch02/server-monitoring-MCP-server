@@ -30,7 +30,7 @@ public class ServerDoctorMcpTools {
     )
     public String listDemoServers() {
 
-        String[] demos = {"demo", "target"};
+        String[] demos = {"demo-server"};
 
         StringBuilder sb = new StringBuilder();
         sb.append("즉시 체험 가능한 데모 서버 목록입니다.\n")
