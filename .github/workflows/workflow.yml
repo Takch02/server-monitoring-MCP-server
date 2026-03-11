@@ -49,10 +49,10 @@ jobs:
         with:
           context: .
           push: true
+          platforms: linux/arm64
           tags: |
             ghcr.io/takch02/mcp-server:latest
             ghcr.io/takch02/mcp-server:${{ github.sha }}
-          platforms: linux/arm64
 
       # 7. Oracle 서버 배포
       - name: Deploy to Oracle Server
