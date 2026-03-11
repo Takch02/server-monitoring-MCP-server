@@ -3,6 +3,7 @@ package com.kakao.kakao_test.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -25,6 +26,7 @@ public class DiscordNotificationService {
      * - 짧은 에러 로그 전송 시 사용
      * - 10분 내 재발송 방지
      */
+    @Async
     public void sendErrorAlert(String webhookUrl, String serverName, String message) {
         if (checkCooldown(serverName)) {
             log.info("⏳ 디스코드 알림 스킵 (쿨타임): {}", serverName);

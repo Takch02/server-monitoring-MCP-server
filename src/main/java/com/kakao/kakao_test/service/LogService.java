@@ -8,9 +8,17 @@ import com.kakao.kakao_test.repository.ServerLogRepository;
 import com.kakao.kakao_test.repository.TargetServerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.DeadlockLoserDataAccessException;
+import org.springframework.jdbc.core.BatchPreparedStatementSetter;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -25,7 +33,7 @@ public class LogService {
     private final TargetServerRepository targetServerRepository;
     private final ServerLogRepository serverLogRepository;
     private final DiscordNotificationService discordNotificationService;
-    private final ServerHeartbeatService serverHeartbeatService;
+    private final JdbcTemplate jdbcTemplate;
 
     /**
      * 서버 이름 가져오기 (없으면 에러)
@@ -41,6 +49,11 @@ public class LogService {
      * 2. DB 저장
      * 3. 에러 감지 시 카카오 알림
      */
+    @Retryable(
+            value = {CannotAcquireLockException.class, DeadlockLoserDataAccessException.class}, // 데드락 에러 발생 시에만
+            maxAttempts = 3,                                  // 최대 3번 재시도
+            backoff = @Backoff(delay = 200)                   // 0.2초 대기 후 재시도
+    )
     @Transactional
     public IngestResultDto ingestLogs(String serverName, String mcpToken, String discordWebhookUrl, List<LogEventDto> events) {
         TargetServer server = getServerOrThrow(serverName);
@@ -49,24 +62,36 @@ public class LogService {
         if (events == null || events.isEmpty()) {
             return new IngestResultDto(serverName, 0, "수신할 로그가 없습니다.");
         }
-        // 1. 하트비트 갱신 (x-lock 을 얻어야 하므로 다른 트렌젝션으로 빼며 데드락을 회피)
-        serverHeartbeatService.updateHeartbeatQuickly(server.getId());
 
-        for (LogEventDto e : events) {
-            if (e.getEventId() == null || e.getEventId().isBlank()) {
-                continue;
+        List<LogEventDto> validEvents = events.stream()
+                .filter(e -> e.getEventId() != null && !e.getEventId().isBlank())
+                .toList();
+
+        String sql = """
+            INSERT INTO server_log (event_id, server_id, level, message, created_at, occurred_at)
+            VALUES (?, ?, ?, ?, NOW(), ?)
+            ON DUPLICATE KEY UPDATE event_id = event_id
+            """;
+
+        jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
+            @Override
+            public void setValues(PreparedStatement ps, int i) throws SQLException {
+                LogEventDto e = validEvents.get(i);
+                ps.setString(1, e.getEventId());
+                ps.setLong(2, server.getId());
+                ps.setString(3, e.getLevel());
+                ps.setString(4, e.getMessage());
+                ps.setObject(5, convertTimestamp(e.getTs()));
             }
-            // eventId 가 중복될 경우 무시하는 쿼리를 날림. (Forwarder의 재전송 로직으로 중복 전송 될 수 있음)
-            serverLogRepository.insertIgnoreDuplicate(
-                    e.getEventId(),
-                    server.getId(),
-                    e.getLevel(),
-                    e.getMessage(),
-                    convertTimestamp(e.getTs())
-            );
-        }
+
+            @Override
+            public int getBatchSize() {
+                return validEvents.size();
+            }
+        });
+
         log.info("{} 서버로부터 로그 {}개 수신됨",
-                serverName, events.size());
+                serverName, validEvents.size());
 
         // 4. 에러 감지 및 알림 (단순 텍스트 전송)
         List<String> errorLogs = events.stream()

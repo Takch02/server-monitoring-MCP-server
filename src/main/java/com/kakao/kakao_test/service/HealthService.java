@@ -17,6 +17,7 @@ public class HealthService {
 
     private final TargetServerRepository targetServerRepository;
     private final ServerHealthEventRepository healthEventRepository;
+    private final ServerHeartbeatService serverHeartbeatService;
     private static final int STALE_SECONDS = 60; // 60초가 지나면 오래된 정보로 인식하여 서버가 죽었다 판단
 
     @Transactional
@@ -24,6 +25,9 @@ public class HealthService {
         // 1) 서버/토큰 검증
         TargetServer server = targetServerRepository.findByServerName(serverName)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown serverName: " + serverName));
+
+        // 하트비트 갱신 (x-lock 을 얻어야 하므로 다른 트렌젝션으로 빼며 데드락을 회피)
+        serverHeartbeatService.updateHeartbeatQuickly(server.getId());
 
         if (!server.getMcpToken().equals(token)) {
             throw new SecurityException("Invalid token");
