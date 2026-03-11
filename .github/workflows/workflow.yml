@@ -3,6 +3,9 @@ name: Deploy MCP Server
 on:
   push:
     branches: [ "main" ]
+permissions:
+  contents: read
+  packages: write
 
 env:
   IMAGE_NAME: ghcr.io/takch02/mcp-server
