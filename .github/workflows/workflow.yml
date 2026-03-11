@@ -50,8 +50,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.IMAGE_NAME }}:latest
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ghcr.io/takch02/mcp-server:latest
+            ghcr.io/takch02/mcp-server:${{ github.sha }}
           platforms: linux/arm64
 
       # 7. Oracle 서버 배포
@@ -76,7 +76,7 @@ jobs:
             docker run -d \
               --name $CONTAINER \
               -p 80:8080 \
-              --env-file /home/ubuntu/${{ env.CONTAINER_NAME }}/.env \
+              --env-file /home/${{ secrets.EC2_USERNAME }}/mcp-server/.env \
               --restart always \
               $IMAGE:latest
 
