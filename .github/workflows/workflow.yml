@@ -76,7 +76,7 @@ jobs:
             docker run -d \
               --name $CONTAINER \
               -p 80:8080 \
-              --env-file /home/${{ secrets.EC2_USERNAME }}/mcp-server/.env \
+              --env-file /home/ubuntu/${{ env.CONTAINER_NAME }}/.env \
               --restart always \
               $IMAGE:latest
 
