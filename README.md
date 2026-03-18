@@ -23,20 +23,31 @@
 * **AI Diagnosis:** 단순 로그 수집을 넘어, LLM이 문맥을 파악하여 에러 원인을 설명.
 
 ---
+## 시연
+**서버를 직접 등록하기 전에 데모서버를 시연하며 어떤 MCP인지 테스트 가능합니다.**
+
+1. 데모 서버의 상태를 확인
+<img width="997" height="691" alt="image" src="https://github.com/user-attachments/assets/984c316b-542a-4fc5-a7e2-228d6519f982" />
+
+2. 에러 여부 확인
+<img width="997" height="328" alt="image" src="https://github.com/user-attachments/assets/f46b5d4c-223c-4a74-b933-9a47163ddc40" />
+
+3. 에러 분석
+<img width="997" height="580" alt="image" src="https://github.com/user-attachments/assets/ea1656e6-7d62-4ff9-8220-8cc2b4dba283" />
+
 
 ## 🏗️ 아키텍처 (Architecture)
 
 본 프로젝트는 보안과 확장성을 위해 **사이드카 패턴(Sidecar Pattern)** 을 채택했습니다.
 
-<img width="1024" height="1536" alt="ChatGPT Image 2026년 1월 24일 오후 11_11_12" src="https://github.com/user-attachments/assets/4201c7c3-7fad-474e-be69-fab5369f43d3" />
-
+<img width="2816" height="1536" alt="아키텍처" src="https://github.com/user-attachments/assets/da147817-e904-4e30-a33d-874fc33aefd6" />
 
 ### 🔄 작동 원리 (Forwarder System)
 1.  **User Target (Spring Boot):** 사용자의 애플리케이션입니다. 로그 파일만 생성하며 외부로 데이터를 보내지 않습니다.
 2.  **Forwarder (Sidecar Container):** 사용자의 서버와 동일한 Docker Network 내에서 실행되는 Python 에이전트입니다.
     * `Logs`: 공유 볼륨(Volume)을 통해 로그 파일을 실시간으로 읽습니다 (Tailing).
     * `Metrics`: 내부망(`http://target:9090`)을 통해 Actuator 정보에 접근합니다.
-    <img width="1024" height="1536" alt="ChatGPT Image 2026년 1월 25일 오후 04_04_57" src="https://github.com/user-attachments/assets/9e8f5279-9e1a-4991-91c3-c61d1370591c" />
+    <img width="512" height="780" alt="ChatGPT Image 2026년 1월 25일 오후 04_04_57" src="https://github.com/user-attachments/assets/9e8f5279-9e1a-4991-91c3-c61d1370591c" />
 
 3.  **MCP Server:** Forwarder로부터 수집된 데이터를 받아 LLM에게 표준화된 MCP 프로토콜로 전달합니다.
 
@@ -60,3 +71,53 @@ REDACT_PATTERNS = [
     (re.compile(r"(\b(token|access_token|secret)\s*=\s*)[^\s&]+", re.IGNORECASE), r"\1[REDACTED]"),
     # ...
 ]
+```
+
+## 🔧 트러블슈팅 (Troubleshooting)
+
+### 1. Queue와 Jitter를 활용한 로그 유실 및 연쇄 장애 방어
+
+**Problem:** 통신 장애 시 무한 재시도로 두 가지 구조적 문제 발생
+- **리소스 고갈:** 재시도가 집중되며 사용자 서버 메모리 점유 지속 증가, OOM 위험
+- **로그 유실:** 재시도 처리에 묶여 신규 로그가 전송되지 못함
+
+**Solution:**
+- 재시도 간격에 Jitter를 부여해 타겟 서버의 부하 분산
+- TTL 1분 적용으로 오래된 로그를 폐기해 연쇄 장애 차단
+- 최대 300건 제한의 메모리 Queue를 두어 호스트 서버의 메모리 고갈 방어 및 신규 로그 저장
+
+**Result:** 로그 수집 서버 중단 시 → 최대 30,000건 로그 Queue 보관 → 복구 후 전량 전송, **유실 0건 확인**
+
+---
+
+### 2. 멱등성 키와 DB 제약조건을 활용한 중복 검증 오버헤드 제거
+
+**Problem:** 네트워크 재전송 시 로그 중복 발생, 무거운 텍스트 대조 비용 및 
+`try-catch` 예외 처리 오버헤드 발생
+
+**Solution:**
+- 메타데이터(서버명, 시간, 메시지) 기반 SHA-1 멱등성 키 생성
+- DB 레벨의 `UNIQUE 인덱스(O(logN))`와 `ON DUPLICATE KEY UPDATE` 활용
+
+**Result:** 애플리케이션 Stack Trace 생성 오버헤드 없이 안전하게 중복 데이터 무시 
+및 성능 최적화
+
+---
+
+### 3. Bulk Insert와 재시도 파이프라인으로 Deadlock 방어 및 TPS 68.9% 개선
+
+**Problem:** 대량 재시도 시 단건 INSERT로 인한 네트워크 병목 및 
+중복 키 유입 시 `S-Lock → X-Lock` 승격으로 인한 Deadlock 발생
+
+**Solution:**
+- `JdbcTemplate` 기반 Bulk Insert 도입 및 메모리 내 사전 정렬로 인덱스 Page Split 최소화
+- 구조적 Deadlock을 애플리케이션 레벨에서 방어하기 위해 Spring `@Retryable` 적용
+
+**Result:** *(로컬 환경, Connection Pool 30개 제한 기준)*
+
+| 지표 | 개선 전 | 개선 후 | 개선율 |
+|------|--------|--------|--------|
+| DB 저장 응답 | 249.32ms | 86.45ms | 65.3% 개선 |
+| 전체 TPS | 594.8 | 1,004.5 | 68.9% 향상 |
+| Deadlock 에러율 | 1% | 0% | 100% 개선 |
+
