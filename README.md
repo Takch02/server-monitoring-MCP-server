@@ -39,8 +39,9 @@
 ## 🏗️ 아키텍처 (Architecture)
 
 본 프로젝트는 보안과 확장성을 위해 **사이드카 패턴(Sidecar Pattern)** 을 채택했습니다.
+<img width="1248" height="490" alt="스크린샷 2026-03-18 오전 10 50 54" src="https://github.com/user-attachments/assets/23171329-4b0e-4cd3-8f11-8527d285842b" />
 
-<img width="2816" height="1536" alt="아키텍처" src="https://github.com/user-attachments/assets/da147817-e904-4e30-a33d-874fc33aefd6" />
+
 
 ### 🔄 작동 원리 (Forwarder System)
 1.  **User Target (Spring Boot):** 사용자의 애플리케이션입니다. 로그 파일만 생성하며 외부로 데이터를 보내지 않습니다.
