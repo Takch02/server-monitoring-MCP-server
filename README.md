@@ -8,14 +8,14 @@
 
 ### 자세한 설명 블로그
 
-[Spring 서버 진단 MCP 개발(Forwarder 편)](https://velog.io/@takch02/MCP-Spring-서버-진단-MCP-개발완료)
+[Spring 서버 진단 MCP 개발](https://velog.io/@takch02/series/MCP)
 
 
 ## 📖 프로젝트 소개 (Overview)
 
 **Server Doctor**는 **MCP(Model Context Protocol)** 를 활용하여, LLM(ChatGPT, Claude 등)이 개발자의 로컬 또는 배포된 **Spring Boot 서버의 상태(Health)와 에러 로그(Logs)** 를 실시간으로 분석하고 진단해주는 도구입니다.
 
-기존 모니터링 도구(Datadog, ELK)의 높은 비용과 복잡한 설정 문제를 해결하기 위해, **초기 스타트업 및 사이드 프로젝트**에 최적화된 **MVP(Minimum Viable Product)** 형태의 진단 솔루션을 개발했습니다.
+기존 모니터링 도구(Datadog, ELK)의 높은 비용과 복잡한 설정 문제를 해결하기 위해, **초기 스타트업 및 사이드 프로젝트**에 최적화된 **MVP** 형태의 진단 솔루션을 개발했습니다.
 
 ### 🎯 핵심 목표
 * **Zero-Config:** `docker-compose.yml, application.yml, .env` 파일 수정으로 즉시 적용 가능.
@@ -47,6 +47,7 @@
 2.  **Forwarder (Sidecar Container):** 사용자의 서버와 동일한 Docker Network 내에서 실행되는 Python 에이전트입니다.
     * `Logs`: 공유 볼륨(Volume)을 통해 로그 파일을 실시간으로 읽습니다 (Tailing).
     * `Metrics`: 내부망(`http://target:9090`)을 통해 Actuator 정보에 접근합니다.
+    * [Forwarder Github 링크](https://github.com/Takch02/server_monitoring_MCP_forwarder)
     <img width="512" height="780" alt="ChatGPT Image 2026년 1월 25일 오후 04_04_57" src="https://github.com/user-attachments/assets/9e8f5279-9e1a-4991-91c3-c61d1370591c" />
 
 3.  **MCP Server:** Forwarder로부터 수집된 데이터를 받아 LLM에게 표준화된 MCP 프로토콜로 전달합니다.
