@@ -35,6 +35,68 @@
 3. 에러 분석
 <img width="997" height="580" alt="image" src="https://github.com/user-attachments/assets/ea1656e6-7d62-4ff9-8220-8cc2b4dba283" />
 
+## 사용자 서버 등록 과정
+
+1. Application.yml
+```java
+logging:
+  file:
+    name: /app/logs/application.log
+
+management:
+  server:
+    port: 9090
+  endpoints:
+    web:
+      exposure:
+        include: "health,metrics"
+  endpoint:
+    health:
+      show-details: always
+```
+2. build.gradle 의존성 추가
+```java
+implementation 'org.springframework.boot:spring-boot-starter-actuator'
+```
+
+3. .env 추가
+```
+SERVER_NAME=test003
+INGEST_TOKEN=c13600a7-0f90-4373-879a-b62c3d1389da // 서버 등록 시 생성되는 Token
+MCP_DOMAIN=http://168.107.53.175
+FORWARDER_IMAGE=ghcr.io/takch02/mcp-forwarder:latest
+```
+
+4. docker-compose.yml 추가
+```
+services:
+  target:
+    container_name: my-app-target
+    image: my-app-image:latest
+    volumes:
+      - logs:/app/logs
+    ports:
+      - "8080:8080"
+
+  forwarder:
+    image: ${FORWARDER_IMAGE}
+    container_name: mcp-forwarder
+    depends_on: [target]
+    volumes:
+      - logs:/logs:ro
+    environment:
+      MCP_LOG_INGEST_URL: "${MCP_DOMAIN}/api/servers/${SERVER_NAME}/ingest/logs"
+      MCP_METRIC_INGEST_URL: "${MCP_DOMAIN}/api/servers/${SERVER_NAME}/ingest/metrics"
+      MCP_HEALTH_INGEST_URL: "${MCP_DOMAIN}/api/servers/${SERVER_NAME}/ingest/health"
+      HEALTH_URL: "http://target:9090/actuator/health"
+      MCP_TOKEN: "${INGEST_TOKEN}"
+      LOG_PATH: "/logs/application.log"
+      ACTUATOR_URL: "http://target:9090/actuator/metrics"
+    restart: unless-stopped
+
+volumes:
+  logs:
+```
 
 ## 🏗️ 아키텍처 (Architecture)
 
