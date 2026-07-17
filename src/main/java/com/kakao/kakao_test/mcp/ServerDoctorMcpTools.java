@@ -52,9 +52,11 @@ public class ServerDoctorMcpTools {
         description = "대상 서버의 최근 에러 로그와 리소스 상태를 조회하여 종합적으로 분석합니다."
     )
     public String diagnoseServer(
-        @McpToolParam(description = "진단할 서버 이름") String serverName
+        @McpToolParam(description = "진단할 서버 이름") String serverName,
+        @McpToolParam(description = "조회 시간 범위(시간 단위). 기본값 24. 데모 서버처럼 오래된 로그만 있을 경우 더 크게 설정하세요. 예: 168 (7일)") Integer sinceHours
     ) {
-        return serverDoctorService.diagnoseForMcp(serverName);
+        int hours = (sinceHours == null || sinceHours <= 0) ? 24 : sinceHours;
+        return serverDoctorService.diagnoseForMcp(serverName, hours);
     }
 
     @McpTool(
@@ -62,10 +64,12 @@ public class ServerDoctorMcpTools {
         description = "서버에서 최근 발생한 에러 로그들을 조회 후 분석합니다."
     )
     public String fetchErrorLogs(
-        @McpToolParam(description = "대상 서버 이름") String serverName
+        @McpToolParam(description = "대상 서버 이름") String serverName,
+        @McpToolParam(description = "조회 시간 범위(시간 단위). 기본값 24. 데모 서버처럼 오래된 로그만 있을 경우 더 크게 설정하세요. 예: 168 (7일)") Integer sinceHours
     ) {
-        ErrorLogAnalysisDto logs = logService.analyzeErrorLogs(serverName);
-        return (logs.getErrorCount() == 0) ? "발견된 에러 로그가 없습니다." : logs.toString();
+        int hours = (sinceHours == null || sinceHours <= 0) ? 24 : sinceHours;
+        ErrorLogAnalysisDto logs = logService.analyzeErrorLogs(serverName, hours);
+        return (logs.getErrorCount() == 0) ? "발견된 에러 로그가 없습니다. (최근 " + hours + "h 기준)" : logs.toString();
     }
 
     @McpTool(

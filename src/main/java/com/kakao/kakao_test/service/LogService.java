@@ -128,14 +128,18 @@ public class LogService {
      * 로그 분석 (LLM 도구용)
      * DB에서 최근 로그를 조회하여 요약
      */
-    static final int LOG_WINDOW_HOURS = 24;
     static final int LOG_LIMIT = 100;
+    static final int DEFAULT_WINDOW_HOURS = 24;
 
     public ErrorLogAnalysisDto analyzeErrorLogs(String name) {
+        return analyzeErrorLogs(name, DEFAULT_WINDOW_HOURS);
+    }
+
+    public ErrorLogAnalysisDto analyzeErrorLogs(String name, int windowHours) {
         TargetServer server = getServerOrThrow(name);
 
-        // 1. 시간 창(24h) 내 최신 로그 조회 — 101번째까지 확인해 상한 도달 여부 판단
-        LocalDateTime since = LocalDateTime.now().minusHours(LOG_WINDOW_HOURS);
+        // 101번째까지 조회해 상한 도달 여부 판단
+        LocalDateTime since = LocalDateTime.now().minusHours(windowHours);
         List<ServerLog> fetched = serverLogRepository
                 .findTop101ByServerAndOccurredAtAfterOrderByOccurredAtDesc(server, since);
 
@@ -147,7 +151,7 @@ public class LogService {
 
         if (recentLogs.isEmpty()) {
             return new ErrorLogAnalysisDto(name, List.of(), 0,
-                    "✅ 최근 " + LOG_WINDOW_HOURS + "시간 내 수집된 로그가 없습니다.", LOG_WINDOW_HOURS, false);
+                    "✅ 최근 " + windowHours + "시간 내 수집된 로그가 없습니다.", windowHours, truncated);
         }
 
         List<String> errors = new ArrayList<>();
@@ -189,12 +193,14 @@ public class LogService {
         }
 
         if (errors.isEmpty()) {
-            return new ErrorLogAnalysisDto(name, List.of(), 0,
-                    "✅ 최근 " + LOG_WINDOW_HOURS + "시간 내 에러가 없습니다.", LOG_WINDOW_HOURS, false);
+            String summary = truncated
+                    ? "✅ 분석 범위(최근 " + windowHours + "h, 100건 샘플)에서는 에러 없음 — 범위 밖 로그는 확인되지 않았습니다."
+                    : "✅ 최근 " + windowHours + "시간 내 에러가 없습니다.";
+            return new ErrorLogAnalysisDto(name, List.of(), 0, summary, windowHours, truncated);
         }
 
         return new ErrorLogAnalysisDto(name, errors, errors.size(),
-                "⚠️ 최근 " + LOG_WINDOW_HOURS + "시간 내 에러 로그가 발견되었습니다.", LOG_WINDOW_HOURS, truncated);
+                "⚠️ 최근 " + windowHours + "시간 내 에러 로그가 발견되었습니다.", windowHours, truncated);
     }
 
     // --- 유틸리티 메서드 ---

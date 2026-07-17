@@ -26,8 +26,11 @@ public class ErrorLogAnalysisDto {
 
         // 1. 헤더 및 요약 정보
         sb.append(String.format("### 📊 에러 로그 데이터 (Server: %s, 최근 %dh)\n", serverName, windowHours));
-        sb.append(String.format("- 🚨 총 발생 에러 수: %d건%s\n", errorCount,
-                truncated ? " (⚠️ 100건 상한 도달 — 실제 에러는 더 많을 수 있습니다)" : ""));
+        if (truncated) {
+            sb.append(String.format("- 🚨 반환: %d건 (최근 %dh) — ⚠️ 상한 도달, 실제 에러는 이보다 많음\n", errorCount, windowHours));
+        } else {
+            sb.append(String.format("- 🚨 에러 수: %d건 (최근 %dh)\n", errorCount, windowHours));
+        }
 
         if (summary != null && !summary.isBlank()) {
             sb.append(String.format("- 📝 상태 요약: %s\n", summary));

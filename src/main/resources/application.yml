@@ -42,7 +42,7 @@ spring:
 
 logging:
   level:
-    org.springframework.jdbc.core: DEBUG
+    org.springframework.jdbc.core: INFO
 
 openai:
   api-key: ${OPENAI_API_KEY}

@@ -36,9 +36,9 @@ public class ServerDoctorService {
     /**
      * Claude, PlayMCP 가 이용할 service (AI API 호출 X)
      */
-    public String diagnoseForMcp(String serverName) {
+    public String diagnoseForMcp(String serverName, int windowHours) {
         // 1. 데이터 수집
-        ErrorLogAnalysisDto logAnalysis = logService.analyzeErrorLogs(serverName);
+        ErrorLogAnalysisDto logAnalysis = logService.analyzeErrorLogs(serverName, windowHours);
         String metricTrend = metricService.getMetricTrend(serverName);
 
         // 2. LLM(Claude)이 읽기 좋은 형태로 Raw Data 포맷팅
@@ -51,11 +51,12 @@ public class ServerDoctorService {
 
         // 에러 로그
         sb.append("**2. 최근 에러 로그 분석:**\n");
-        sb.append("- 총 에러 수: ").append(logAnalysis.getErrorCount()).append("건");
         if (logAnalysis.isTruncated()) {
-            sb.append(" (⚠️ 100건 상한 도달 — 실제 에러는 더 많을 수 있습니다)");
+            sb.append("- 반환: ").append(logAnalysis.getErrorCount())
+              .append("건 — ⚠️ 상한 도달, 실제 에러는 이보다 많음\n");
+        } else {
+            sb.append("- 에러 수: ").append(logAnalysis.getErrorCount()).append("건\n");
         }
-        sb.append("\n");
 
         if (logAnalysis.getErrorCount() > 0) {
             sb.append("- 주요 로그 내역:\n```text\n");
@@ -97,11 +98,15 @@ public class ServerDoctorService {
         5. 한국어로 답변하세요.
         """;
 
+        String truncatedWarning = logAnalysis.isTruncated()
+                ? "\n⚠️ 주의: 로그가 100건 상한에 도달했습니다. 아래 로그는 전체의 일부이며 실제 에러는 더 많을 수 있습니다."
+                : "";
+
         String userContent = String.format("""
         [분석 요청 데이터]
         1. 서버명: %s
         2. CPU/RAM 상태: %s
-        3. 최근 발생한 핵심 에러 로그 (최대 10건):
+        3. 최근 %dh 에러 로그 (%d건):%s
         ```text
         %s
         ```
@@ -109,6 +114,9 @@ public class ServerDoctorService {
         """,
                 serverName,
                 metricTrend,
+                logAnalysis.getWindowHours(),
+                logAnalysis.getRecentErrors().size(),
+                truncatedWarning,
                 logAnalysis.getRecentErrors().stream()
                         .collect(Collectors.joining("\n"))
         );

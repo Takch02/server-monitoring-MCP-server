@@ -65,18 +65,44 @@ class LogServiceTest {
     }
 
     @Test
-    void 시간창_24h_파라미터가_현재시각_기준으로_전달됨() {
+    void 기본값_24h_since_파라미터_전달됨() {
         given(serverLogRepository.findTop101ByServerAndOccurredAtAfterOrderByOccurredAtDesc(eq(server), any()))
                 .willReturn(Collections.emptyList());
 
         logService.analyzeErrorLogs("test-server");
 
-        // since 파라미터가 현재 시각 기준 24h 이내인지 확인
         then(serverLogRepository).should().findTop101ByServerAndOccurredAtAfterOrderByOccurredAtDesc(
                 eq(server),
                 argThat(since -> since.isAfter(LocalDateTime.now().minusHours(25))
                               && since.isBefore(LocalDateTime.now().minusHours(23)))
         );
+    }
+
+    @Test
+    void 커스텀_168h_since_파라미터_전달됨() {
+        given(serverLogRepository.findTop101ByServerAndOccurredAtAfterOrderByOccurredAtDesc(eq(server), any()))
+                .willReturn(Collections.emptyList());
+
+        ErrorLogAnalysisDto result = logService.analyzeErrorLogs("test-server", 168);
+
+        assertThat(result.getWindowHours()).isEqualTo(168);
+        assertThat(result.getSummary()).contains("168시간");
+        then(serverLogRepository).should().findTop101ByServerAndOccurredAtAfterOrderByOccurredAtDesc(
+                eq(server),
+                argThat(since -> since.isAfter(LocalDateTime.now().minusHours(169))
+                              && since.isBefore(LocalDateTime.now().minusHours(167)))
+        );
+    }
+
+    @Test
+    void windowHours가_결과에_포함됨() {
+        given(serverLogRepository.findTop101ByServerAndOccurredAtAfterOrderByOccurredAtDesc(eq(server), any()))
+                .willReturn(List.of(log("ERROR", "some error")));
+
+        ErrorLogAnalysisDto result = logService.analyzeErrorLogs("test-server", 48);
+
+        assertThat(result.getWindowHours()).isEqualTo(48);
+        assertThat(result.toString()).contains("48h");
     }
 
     // ===== analyzeErrorLogs — 에러 필터링 =====
@@ -179,7 +205,7 @@ class LogServiceTest {
         ErrorLogAnalysisDto result = logService.analyzeErrorLogs("test-server");
 
         // toString()에 상한 도달 경고가 포함되는지 확인
-        assertThat(result.toString()).contains("100건 상한 도달");
+        assertThat(result.toString()).contains("상한 도달");
     }
 
     // ===== ingestLogs =====

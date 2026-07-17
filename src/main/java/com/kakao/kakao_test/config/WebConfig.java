@@ -2,6 +2,7 @@ package com.kakao.kakao_test.config;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -12,7 +13,12 @@ public class WebConfig {
 
     @Bean
     public RestClient restClient() {
-        return RestClient.create();
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(3_000);
+        factory.setReadTimeout(60_000);
+        return RestClient.builder()
+                .requestFactory(factory)
+                .build();
     }
 
     @Bean
