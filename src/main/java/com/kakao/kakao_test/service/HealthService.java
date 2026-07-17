@@ -69,15 +69,22 @@ public class HealthService {
 
         String lastAt = java.time.Instant.ofEpochMilli(latestOpt.getTs()).toString();
 
+        if (stale) {
+            return String.format(
+                    "Health: UNKNOWN (⚠️ 마지막 응답이 %.1f일 전 — 서버가 다운되었거나 forwarder가 중단된 것으로 판단됩니다)\nLastCheck: %s\nLastKnownStatus: %s",
+                    ageMs / 1000.0 / 86400.0,
+                    lastAt,
+                    latestOpt.getStatus()
+            );
+        }
+
         return String.format(
-                "Health: %s\nLastCheck: %s (%.1fs ago)\nHTTP: %d\nLatency: %dms\nStale(>%ds): %s",
+                "Health: %s\nLastCheck: %s (%.1fs ago)\nHTTP: %d\nLatency: %dms",
                 latestOpt.getStatus(),
                 lastAt,
                 ageMs / 1000.0,
                 latestOpt.getHttpStatus(),
-                latestOpt.getLatencyMs(),
-                STALE_SECONDS,
-                stale ? "YES" : "NO"
+                latestOpt.getLatencyMs()
         );
     }
 
