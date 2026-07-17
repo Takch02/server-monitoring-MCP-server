@@ -19,7 +19,7 @@ public class LlmClientService {
     @Value("${openai.api-key}")
     private String apiKey;
 
-    private final RestClient restClient = RestClient.create();
+    private final RestClient restClient;
 
     public String analyze(String systemPrompt, String userContent) {
         log.info("🤖 LLM에게 분석 요청 중...");

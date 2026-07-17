@@ -3,7 +3,7 @@ package com.kakao.kakao_test.service;
 import com.kakao.kakao_test.domain.TargetServer;
 import com.kakao.kakao_test.dto.RegisterServerRequest;
 import com.kakao.kakao_test.dto.RegisterServerResponse;
-import com.kakao.kakao_test.exception.DuplicationServer;
+import com.kakao.kakao_test.exception.DuplicationServerException;
 import com.kakao.kakao_test.repository.TargetServerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,9 +32,8 @@ public class ServerRegisterService {
     public RegisterServerResponse registerServer(RegisterServerRequest req) {
         // 서버 이름 중복 처리
         if (targetServerRepository.existsByServerName(req.getServerName())) {
-            throw new IllegalArgumentException("이미 등록된 서버 이름입니다: " + req.getServerName());
+            throw new DuplicationServerException("이미 등록된 서버 이름입니다: " + req.getServerName());
         }
-        duplicateServer(req.getServerName());
         // 토큰 생성
         String token = UUID.randomUUID().toString();
 
@@ -48,15 +47,6 @@ public class ServerRegisterService {
                 token,
                 generateSetupGuide(server.getServerName(), server.getMcpToken())
         );
-    }
-
-    /**
-     * 서버 등록 전 "이름 + url" 이 중복되는지 탐색
-     */
-    private void duplicateServer(String serverName) {
-        if (targetServerRepository.findByServerName(serverName).isPresent()) {
-            throw new DuplicationServer("이미 존재하는 서버입니다. 서버 이름 : " + serverName);
-        }
     }
 
     // 📋 마크다운 가이드 생성 메서드

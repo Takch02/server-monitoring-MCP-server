@@ -14,6 +14,9 @@ import java.util.List;
 public interface ServerLogRepository extends JpaRepository<ServerLog, Long> {
     // 특정 서버의 최신 로그 100개 가져오기
     List<ServerLog> findTop100ByServerOrderByOccurredAtDesc(TargetServer server);
+
+    // 시간 창 내 최신 로그 101개 (101번째가 있으면 상한 도달 표기용)
+    List<ServerLog> findTop101ByServerAndOccurredAtAfterOrderByOccurredAtDesc(TargetServer server, LocalDateTime since);
     
     // 특정 서버의 에러 로그만 최신순 조회
     List<ServerLog> findByServerAndLevelOrderByOccurredAtDesc(TargetServer server, String level, Pageable pageable);

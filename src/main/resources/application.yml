@@ -19,6 +19,8 @@ spring:
       password: ${DB_PASSWORD}
       hikari:
         max-lifetime: 580000
+        connection-timeout: 5000
+        idle-timeout: 300000
     mvc:
       async:
         request-timeout: 300000
@@ -37,6 +39,10 @@ spring:
 
           stateless:
             mcp-endpoint: /mcp
+
+logging:
+  level:
+    org.springframework.jdbc.core: INFO
 
 openai:
   api-key: ${OPENAI_API_KEY}

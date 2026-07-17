@@ -68,9 +68,8 @@ public class LogService {
                 .toList();
 
         String sql = """
-            INSERT INTO server_log (event_id, server_id, level, message, created_at, occurred_at)
+            INSERT IGNORE INTO server_log (event_id, server_id, level, message, created_at, occurred_at)
             VALUES (?, ?, ?, ?, NOW(), ?)
-            ON DUPLICATE KEY UPDATE event_id = event_id
             """;
 
         jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
@@ -129,17 +128,30 @@ public class LogService {
      * 로그 분석 (LLM 도구용)
      * DB에서 최근 로그를 조회하여 요약
      */
+    static final int LOG_LIMIT = 100;
+    static final int DEFAULT_WINDOW_HOURS = 24;
+
     public ErrorLogAnalysisDto analyzeErrorLogs(String name) {
+        return analyzeErrorLogs(name, DEFAULT_WINDOW_HOURS);
+    }
+
+    public ErrorLogAnalysisDto analyzeErrorLogs(String name, int windowHours) {
         TargetServer server = getServerOrThrow(name);
 
-        // 1. 가장 최근 로그 100개 가져오기
-        List<ServerLog> recentLogs = serverLogRepository.findTop100ByServerOrderByOccurredAtDesc(server);
+        // 101번째까지 조회해 상한 도달 여부 판단
+        LocalDateTime since = LocalDateTime.now().minusHours(windowHours);
+        List<ServerLog> fetched = serverLogRepository
+                .findTop101ByServerAndOccurredAtAfterOrderByOccurredAtDesc(server, since);
 
-        // 2. 최근 로그 100개를 역순으로 뒤집어 사건의 순서대로 보여줌.
+        boolean truncated = fetched.size() > LOG_LIMIT;
+        List<ServerLog> recentLogs = truncated ? fetched.subList(0, LOG_LIMIT) : fetched;
+
+        // 2. 시간순으로 뒤집어 사건의 순서대로 보여줌
         Collections.reverse(recentLogs);
 
         if (recentLogs.isEmpty()) {
-            return new ErrorLogAnalysisDto(name, List.of(), 0, "✅ 수집된 로그가 없습니다.");
+            return new ErrorLogAnalysisDto(name, List.of(), 0,
+                    "✅ 최근 " + windowHours + "시간 내 수집된 로그가 없습니다.", windowHours, truncated);
         }
 
         List<String> errors = new ArrayList<>();
@@ -181,15 +193,14 @@ public class LogService {
         }
 
         if (errors.isEmpty()) {
-            return new ErrorLogAnalysisDto(name, List.of(), 0, "✅ 최근 구간에서 에러가 없습니다.");
+            String summary = truncated
+                    ? "✅ 분석 범위(최근 " + windowHours + "h, 100건 샘플)에서는 에러 없음 — 범위 밖 로그는 확인되지 않았습니다."
+                    : "✅ 최근 " + windowHours + "시간 내 에러가 없습니다.";
+            return new ErrorLogAnalysisDto(name, List.of(), 0, summary, windowHours, truncated);
         }
 
-        return new ErrorLogAnalysisDto(
-                name,
-                errors,
-                errors.size(),
-                "⚠️ 최근 에러 로그가 발견되었습니다."
-        );
+        return new ErrorLogAnalysisDto(name, errors, errors.size(),
+                "⚠️ 최근 " + windowHours + "시간 내 에러 로그가 발견되었습니다.", windowHours, truncated);
     }
 
     // --- 유틸리티 메서드 ---
