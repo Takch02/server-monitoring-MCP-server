@@ -13,6 +13,8 @@ public class ErrorLogAnalysisDto {
     private List<String> recentErrors;
     private int errorCount;
     private String summary;
+    private int windowHours;
+    private boolean truncated;
 
     /**
      * MCP(Claude)에게 보낼 Raw Data 포맷으로 변환
@@ -23,8 +25,9 @@ public class ErrorLogAnalysisDto {
         StringBuilder sb = new StringBuilder();
 
         // 1. 헤더 및 요약 정보
-        sb.append(String.format("### 📊 에러 로그 데이터 (Server: %s)\n", serverName));
-        sb.append(String.format("- 🚨 총 발생 에러 수: %d건\n", errorCount));
+        sb.append(String.format("### 📊 에러 로그 데이터 (Server: %s, 최근 %dh)\n", serverName, windowHours));
+        sb.append(String.format("- 🚨 총 발생 에러 수: %d건%s\n", errorCount,
+                truncated ? " (⚠️ 100건 상한 도달 — 실제 에러는 더 많을 수 있습니다)" : ""));
 
         if (summary != null && !summary.isBlank()) {
             sb.append(String.format("- 📝 상태 요약: %s\n", summary));
@@ -41,7 +44,6 @@ public class ErrorLogAnalysisDto {
 
             // 리스트의 각 에러를 줄바꿈으로 연결
             String joinedLogs = recentErrors.stream()
-                    .limit(15) // 너무 길면 토큰 터질 수 있으니 안전하게 15개 정도만
                     .collect(Collectors.joining("\n----------------------------------------\n"));
 
             sb.append(joinedLogs);

@@ -28,6 +28,14 @@ public class GlobalExceptionHandler {
         ));
     }
 
+    @ExceptionHandler(DuplicationServerException.class)
+    public ResponseEntity<?> duplication(DuplicationServerException e) {
+        return ResponseEntity.status(409).body(Map.of(
+                "error", "CONFLICT",
+                "message", e.getMessage()
+        ));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<?> unknown(Exception e) {
         return ResponseEntity.status(500).body(Map.of(
