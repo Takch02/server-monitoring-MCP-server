@@ -186,7 +186,7 @@ public class LogService {
         }
 
         List<String> errors = new ArrayList<>();
-        String lastMsg = "";
+        String lastMsg = null;
         int duplicateCount = 0;
 
         for (ServerLog log : errorLogs) {
