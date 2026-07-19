@@ -138,34 +138,28 @@ public class LogService {
     public ErrorLogAnalysisDto analyzeErrorLogs(String name, int windowHours) {
         TargetServer server = getServerOrThrow(name);
 
-        // 101번째까지 조회해 상한 도달 여부 판단
+        // DB에서 ERROR 레벨만 101건 조회 (idx_log_level 인덱스 사용)
         LocalDateTime since = LocalDateTime.now().minusHours(windowHours);
         List<ServerLog> fetched = serverLogRepository
-                .findTop101ByServerAndOccurredAtAfterOrderByOccurredAtDesc(server, since);
+                .findTop101ByServerAndLevelAndOccurredAtAfterOrderByOccurredAtDesc(server, "ERROR", since);
 
         boolean truncated = fetched.size() > LOG_LIMIT;
-        List<ServerLog> recentLogs = truncated ? fetched.subList(0, LOG_LIMIT) : fetched;
+        List<ServerLog> errorLogs = truncated ? fetched.subList(0, LOG_LIMIT) : fetched;
 
-        // 2. 시간순으로 뒤집어 사건의 순서대로 보여줌
-        Collections.reverse(recentLogs);
+        // 시간순으로 뒤집어 사건의 순서대로 보여줌
+        Collections.reverse(errorLogs);
 
-        if (recentLogs.isEmpty()) {
+        if (errorLogs.isEmpty()) {
             return new ErrorLogAnalysisDto(name, List.of(), 0,
-                    "✅ 최근 " + windowHours + "시간 내 수집된 로그가 없습니다.", windowHours, truncated);
+                    "✅ 최근 " + windowHours + "시간 내 수집된 에러 로그가 없습니다.", windowHours, truncated);
         }
 
         List<String> errors = new ArrayList<>();
         String lastMsg = "";
         int duplicateCount = 0;
 
-        for (ServerLog log : recentLogs) {
+        for (ServerLog log : errorLogs) {
             String msg = safe(log.getMessage());
-            String level = safe(log.getLevel());
-
-            // 에러가 아니면 패스 (단, Exception 힌트가 있으면 포함)
-            if (!"ERROR".equalsIgnoreCase(level) && !containsExceptionHint(msg)) {
-                continue;
-            }
 
             // (A) 중복 제거 로직
             if (msg.equals(lastMsg)) {
@@ -179,12 +173,9 @@ public class LogService {
             }
 
             // (B) 길이 제한
-            String displayMsg = msg;
-            if (displayMsg.length() > 500) {
-                displayMsg = displayMsg.substring(0, 500) + "\n   ... (생략됨) ...";
-            }
+            String displayMsg = msg.length() > 500 ? msg.substring(0, 500) + "\n   ... (생략됨) ..." : msg;
 
-            errors.add(log.getOccurredAt() + " [" + level + "] " + displayMsg);
+            errors.add(log.getOccurredAt() + " [ERROR] " + displayMsg);
             lastMsg = msg;
         }
 
