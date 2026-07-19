@@ -115,9 +115,9 @@ public class MetricService {
                 .filter(m -> m.getCpuUsage() > 80.0)
                 .count();
 
-        // 메모리가 90% 넘었던 순간
+        // 메모리가 80% 넘었던 순간
         long highMemCount = history.stream()
-                .filter(m -> (m.getMemoryUsedMb() / m.getMemoryMaxMb() * 100.0) > 90.0)
+                .filter(m -> (m.getMemoryUsedMb() / m.getMemoryMaxMb() * 100.0) > 80.0)
                 .count();
 
         // 4. 결과 문자열 포맷팅
@@ -127,7 +127,7 @@ public class MetricService {
             double maxCpu = history.stream().mapToDouble(ServerMetric::getCpuUsage).max().orElse(0.0);
 
             return String.format(
-                    "⚠️ 최근 10분간 리소스 불안정:%s\n- CPU 80%% 초과: %d회 (최대 %.1f%%)\n- 메모리 90%% 초과: %d회",
+                    "⚠️ 최근 10분간 리소스 불안정:%s\n- CPU 80%% 초과: %d회 (최대 %.1f%%)\n- 메모리 80%% 초과: %d회",
                     statsSummary, highCpuCount, maxCpu, highMemCount
             );
         }
