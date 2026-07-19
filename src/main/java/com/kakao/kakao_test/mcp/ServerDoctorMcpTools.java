@@ -73,6 +73,18 @@ public class ServerDoctorMcpTools {
     }
 
     @McpTool(
+        name = "ServerDoctor-fetch_recent_logs",
+        description = "서버의 최근 로그를 INFO/WARN/ERROR 레벨 구분 없이 최신순으로 조회합니다. 에러 외 흐름을 파악하거나 장애 전후 맥락을 확인할 때 사용하세요."
+    )
+    public String fetchRecentLogs(
+        @McpToolParam(description = "대상 서버 이름") String serverName,
+        @McpToolParam(description = "조회 시간 범위(시간 단위). 기본값 24. 예: 168 (7일)") Integer sinceHours
+    ) {
+        int hours = (sinceHours == null || sinceHours <= 0) ? 24 : sinceHours;
+        return logService.fetchRecentLogs(serverName, hours);
+    }
+
+    @McpTool(
         name = "ServerDoctor-register_server",
         description = "모니터링할 새로운 대상 서버를 등록하고, 연동 가이드(yml, env 등)를 생성합니다."
     )

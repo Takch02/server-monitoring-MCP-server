@@ -135,6 +135,37 @@ public class LogService {
         return analyzeErrorLogs(name, DEFAULT_WINDOW_HOURS);
     }
 
+    public String fetchRecentLogs(String name, int windowHours) {
+        TargetServer server = getServerOrThrow(name);
+
+        LocalDateTime since = LocalDateTime.now().minusHours(windowHours);
+        List<ServerLog> fetched = serverLogRepository
+                .findTop101ByServerAndOccurredAtAfterOrderByOccurredAtDesc(server, since);
+
+        boolean truncated = fetched.size() > LOG_LIMIT;
+        List<ServerLog> logs = truncated ? fetched.subList(0, LOG_LIMIT) : fetched;
+        Collections.reverse(logs);
+
+        if (logs.isEmpty()) {
+            return "✅ 최근 " + windowHours + "시간 내 수집된 로그가 없습니다.";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("### 📋 최근 로그 (Server: %s, 최근 %dh, %d건%s)\n\n",
+                name, windowHours, logs.size(),
+                truncated ? " — ⚠️ 상한 도달, 실제 로그는 더 많음" : ""));
+        sb.append("```text\n");
+        for (ServerLog log : logs) {
+            sb.append(log.getOccurredAt())
+              .append(" [").append(safe(log.getLevel())).append("] ")
+              .append(safe(log.getMessage()).length() > 300
+                      ? safe(log.getMessage()).substring(0, 300) + " ..." : safe(log.getMessage()))
+              .append("\n");
+        }
+        sb.append("```");
+        return sb.toString();
+    }
+
     public ErrorLogAnalysisDto analyzeErrorLogs(String name, int windowHours) {
         TargetServer server = getServerOrThrow(name);
 
