@@ -70,42 +70,49 @@ jobs:
           script: |
             IMAGE=${{ env.IMAGE_NAME }}
             CONTAINER=${{ env.CONTAINER_NAME }}
-            CONTAINER_NEW="${CONTAINER}_new"
 
             echo "Pull latest image"
             docker pull $IMAGE:latest
 
-            echo "Run new container for health check"
-            docker stop $CONTAINER_NEW 2>/dev/null || true
-            docker rm $CONTAINER_NEW 2>/dev/null || true
+            echo "Stop existing container"
+            docker stop $CONTAINER || true
+            docker rm $CONTAINER || true
+
+            echo "Run new container"
             docker run -d \
-              --name $CONTAINER_NEW \
-              -p 8081:8080 \
+              --name $CONTAINER \
+              -p 80:8080 \
               --env-file /home/${{ secrets.EC2_USERNAME }}/mcp-server/.env \
-              --restart no \
+              --restart always \
               $IMAGE:latest
 
             echo "Wait for new container to be healthy"
             for i in $(seq 1 12); do
-              STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8081/actuator/health || echo "000")
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:80/actuator/health || echo "000")
               if [ "$STATUS" = "200" ]; then
                 echo "Health check passed"
-                break
+                exit 0
               fi
               if [ "$i" = "12" ]; then
-                echo "Health check failed — rolling back"
-                docker stop $CONTAINER_NEW && docker rm $CONTAINER_NEW
+                echo "Health check failed — starting rollback"
+                PREV_IMAGE=$(docker images $IMAGE --format "{{.Tag}}" | grep -v latest | sort -r | sed -n '2p')
+                if [ -n "$PREV_IMAGE" ]; then
+                  docker stop $CONTAINER && docker rm $CONTAINER
+                  docker run -d \
+                    --name $CONTAINER \
+                    -p 80:8080 \
+                    --env-file /home/${{ secrets.EC2_USERNAME }}/mcp-server/.env \
+                    --restart always \
+                    $IMAGE:$PREV_IMAGE
+                  echo "Rolled back to $PREV_IMAGE"
+                else
+                  echo "No previous image found for rollback"
+                fi
                 exit 1
               fi
               echo "Attempt $i/12: status=$STATUS, retrying in 5s..."
               sleep 5
             done
-
-            echo "Swap containers"
-            docker stop $CONTAINER || true
-            docker rm $CONTAINER || true
-            docker rename $CONTAINER_NEW $CONTAINER
-            docker update --restart always $CONTAINER
 
             echo "Clean unused images"
             docker image prune -f || true
