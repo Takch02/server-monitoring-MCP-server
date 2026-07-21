@@ -31,7 +31,7 @@ jobs:
 
       # 3. Gradle Build
       - name: Build with Gradle
-        run: ./gradlew build -x test
+        run: ./gradlew build
 
       # 4. Docker buildx 활성화
       - name: Set up Docker Buildx
