@@ -161,7 +161,7 @@ class MetricServiceTest {
 
         String result = metricService.getMetricTrend("test-server");
         assertThat(result).contains("⚠️");
-        assertThat(result).contains("메모리 90%");
+        assertThat(result).contains("메모리 80% 초과");
     }
 
     // ===== helpers =====

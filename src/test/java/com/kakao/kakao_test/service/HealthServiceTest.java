@@ -177,7 +177,8 @@ class HealthServiceTest {
 
         String result = healthService.getHealthStatusForMcp("my-server");
 
-        assertThat(result).contains("Stale(>60s): YES");
+        assertThat(result).contains("Health: UNKNOWN");
+        assertThat(result).contains("마지막 응답이");
     }
 
     @Test
@@ -188,7 +189,8 @@ class HealthServiceTest {
 
         String result = healthService.getHealthStatusForMcp("my-server");
 
-        assertThat(result).contains("Stale(>60s): NO");
+        assertThat(result).contains("Health: UP");
+        assertThat(result).contains("ago");
     }
 
     // ===== helpers =====
