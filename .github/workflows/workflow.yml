@@ -86,8 +86,8 @@ jobs:
               --restart always \
               $IMAGE:latest
 
-            echo "Waiting 15s for container to initialize..."
-            sleep 15
+            echo "Waiting 70s for container to initialize..."
+            sleep 70
 
             echo "Wait for new container to be healthy"
             for i in $(seq 1 12); do
