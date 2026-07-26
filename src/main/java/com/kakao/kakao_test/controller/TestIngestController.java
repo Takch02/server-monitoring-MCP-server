@@ -30,38 +30,6 @@ public class TestIngestController {
     private final ServerLogRepository serverLogRepository;
     private final TargetServerRepository targetServerRepository;
 
-//    @PostMapping("/ingest/logs/{serverId}")
-//    public Map<String, Object> ingestLogs(@PathVariable Long serverId,
-//                                          @RequestBody List<LogEventDto> events) {
-//        if (events == null || events.isEmpty()) {
-//            return Map.of("inserted", 0);
-//        }
-//
-//        String sql = """
-//                INSERT IGNORE INTO server_log (event_id, server_id, level, message, created_at, occurred_at)
-//                VALUES (?, ?, ?, ?, NOW(), ?)
-//                """;
-//
-//        jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
-//            @Override
-//            public void setValues(PreparedStatement ps, int i) throws SQLException {
-//                LogEventDto e = events.get(i);
-//                ps.setString(1, e.getEventId());
-//                ps.setLong(2, serverId);
-//                ps.setString(3, e.getLevel());
-//                ps.setString(4, e.getMessage());
-//                ps.setObject(5, toLocalDateTime(e.getTs()));
-//            }
-//
-//            @Override
-//            public int getBatchSize() {
-//                return events.size();
-//            }
-//        });
-//
-//        return Map.of("inserted", events.size());
-//    }
-
     @Transactional
     @PostMapping("/ingest/logs/save-all/{serverId}")
     public Map<String, Object> saveAll(@PathVariable Long serverId,

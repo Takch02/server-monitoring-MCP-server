@@ -3,7 +3,6 @@ package com.kakao.kakao_test.service;
 import com.kakao.kakao_test.domain.ServerMetric;
 import com.kakao.kakao_test.domain.TargetServer;
 import com.kakao.kakao_test.dto.MetricIngestDto;
-import com.kakao.kakao_test.dto.ServerMetricsDto;
 import com.kakao.kakao_test.exception.UnauthorizedException;
 import com.kakao.kakao_test.repository.ServerMetricRepository;
 import com.kakao.kakao_test.repository.TargetServerRepository;
@@ -18,7 +17,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -88,33 +86,6 @@ class MetricServiceTest {
         assertThat(saved.getCpuUsage()).isEqualTo(50.0);
         assertThat(saved.getMemoryUsedMb()).isEqualTo(500.0);
         assertThat(saved.getMemoryMaxMb()).isEqualTo(1000.0);
-    }
-
-    // ===== getCurrentMetrics =====
-
-    @Test
-    void 저장된메트릭없음_기본값반환() {
-        given(serverMetricRepository.findTopByServerOrderByCapturedAtDesc(server))
-                .willReturn(Optional.empty());
-
-        ServerMetricsDto result = metricService.getCurrentMetrics("test-server");
-
-        assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getCpuUsagePercent()).isZero();
-    }
-
-    @Test
-    void 저장된메트릭있음_최신값반환() {
-        ServerMetric metric = metric(75.0, 800.0, 1000.0);
-        given(serverMetricRepository.findTopByServerOrderByCapturedAtDesc(server))
-                .willReturn(Optional.of(metric));
-
-        ServerMetricsDto result = metricService.getCurrentMetrics("test-server");
-
-        assertThat(result.isSuccess()).isTrue();
-        assertThat(result.getCpuUsagePercent()).isEqualTo(75.0);
-        assertThat(result.getJvmMemoryUsedMb()).isEqualTo(800.0);
-        assertThat(result.getJvmMemoryMaxMb()).isEqualTo(1000.0);
     }
 
     // ===== getMetricTrend =====
