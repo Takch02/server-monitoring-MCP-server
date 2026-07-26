@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '\"[\" + (now | todate) + \"] \" + (.tool_input.command // \"\")' >> ~/.claude/kakao_test-bash-log.txt 2>/dev/null || true"
+            "command": "jq -r '\"[\" + (now | todate) + \"] \" + ((.tool_input.command // \"\") | split(\" \")[0])' >> ~/.claude/kakao_test-bash-log.txt 2>/dev/null || true"
           },
           {
             "type": "command",
