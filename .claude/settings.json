@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.tool_input.file_path // \"\"' | { read -r f; echo \"$f\" | grep -qE '\\.java$' && ./gradlew compileJava compileTestJava -q; } 2>/dev/null || true",
+            "command": "f=$(jq -r '.tool_input.file_path // \"\"'); case \"$f\" in *.java) ./gradlew compileJava compileTestJava -q ;; esac",
             "async": true,
             "statusMessage": "Java 컴파일 체크 중..."
           }
