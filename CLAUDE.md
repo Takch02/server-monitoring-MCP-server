@@ -86,7 +86,7 @@
 | **인증/토큰/외부노출/DB 접근 관련 변경 시** | `security-review` | MCP 토큰 검증, Actuator 9090 노출, PII(로그 내 시크릿) 마스킹 등 이 프로젝트 핵심 리스크 점검. |
 | **PR 올리기 직전** | `verify-and-ci` | `./gradlew test` 전체 통과 + `.github/workflows/workflow.yml` 체크리스트(테스트 스킵, 시크릿 하드코딩, 헬스체크/롤백, 이미지 태그) 점검. |
 
-- 커밋 자체는 hook이 `git commit`을 가로채 `./gradlew test`를 강제 실행하지만, 이는 **회귀 방지 최후 방어선**일 뿐 리뷰를 대체하지 않는다.
+- `.claude/settings.json`의 PreToolUse hook은 **Claude Code가 Bash로 `git commit`을 실행하려 할 때만** `./gradlew test`를 보조적으로 돌려준다. 이는 명령 문자열 매칭 기반의 **best-effort 체크**일 뿐, git 자체의 강제 장치가 아니다 — Claude Code를 거치지 않고 터미널/IDE/다른 툴로 커밋하면 이 검사는 아예 실행되지 않고, 명령 형태에 따라 우회될 수도 있다. **"최후 방어선"으로 신뢰하지 말 것** — 실제 방어선은 위 skill들을 사람이 챙기는 것이다.
 - `code-review`/`security-review`는 매 커밋마다 무조건 새로 돌릴 필요는 없다 — 작은 수정 반복 중엔 스킵하고, 기능 단위가 완결되는 시점(PR 직전)에 몰아서 적용해도 된다. 단, 토큰·인증·외부 노출을 건드렸다면 즉시 `security-review`.
 - 확신이 안 서는 변경은 사람에게 근거와 함께 확인받을 것.
 
