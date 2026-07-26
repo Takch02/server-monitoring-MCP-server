@@ -3,7 +3,6 @@ package com.kakao.kakao_test.service;
 import com.kakao.kakao_test.domain.ServerMetric;
 import com.kakao.kakao_test.domain.TargetServer;
 import com.kakao.kakao_test.dto.MetricIngestDto;
-import com.kakao.kakao_test.dto.ServerMetricsDto;
 import com.kakao.kakao_test.exception.UnauthorizedException;
 import com.kakao.kakao_test.repository.ServerMetricRepository;
 import com.kakao.kakao_test.repository.TargetServerRepository;
@@ -69,25 +68,7 @@ public class MetricService {
 
 
     /**
-     * [2] 현재 상태 조회 (LLM Tools용)
-     * - DB에서 가장 최신 메트릭 1개 조회
-     */
-    public ServerMetricsDto getCurrentMetrics(String serverName) {
-        TargetServer server = targetServerRepository.getByServerName(serverName);
-
-        // DB에서 최신값 1개 가져오기
-        return serverMetricRepository.findTopByServerOrderByCapturedAtDesc(server)
-                .map(m -> new ServerMetricsDto(
-                        m.getCpuUsage(),        // 이미 % 단위로 저장됨
-                        m.getMemoryUsedMb(),    // 이미 MB 단위
-                        m.getMemoryMaxMb(),
-                        true
-                ))
-                .orElseGet(() -> new ServerMetricsDto(0.0, 0.0, 0.0, false));
-    }
-
-    /**
-     * [3] 최근 트렌드 분석 (LLM Tools용)
+     * [2] 최근 트렌드 분석 (LLM Tools용)
      * - 최근 10분(또는 최근 60개) 데이터를 조회하여 분석
      */
     public String getMetricTrend(String serverName) {
