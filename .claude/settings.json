@@ -1,0 +1,32 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // \"\"' | { read -r f; echo \"$f\" | grep -qE '\\.java$' && ./gradlew compileJava compileTestJava -q; } 2>/dev/null || true",
+            "async": true,
+            "statusMessage": "Java 컴파일 체크 중..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '\"[\" + (now | todate) + \"] \" + (.tool_input.command // \"\")' >> ~/.claude/kakao_test-bash-log.txt 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command // \"\"'); echo \"$cmd\" | grep -q 'git commit' || exit 0; ./gradlew test -q >/tmp/kakao_precommit_test.log 2>&1 && exit 0; echo '커밋 차단: ./gradlew test 실패. /tmp/kakao_precommit_test.log 확인 후 수정하세요.' >&2; exit 2"
+          }
+        ]
+      }
+    ]
+  }
+}
