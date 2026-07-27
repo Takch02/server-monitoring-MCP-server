@@ -242,6 +242,19 @@ class LogServiceTest {
     }
 
     @Test
+    void HTTP_공백상태코드_형식도_집계됨() {
+        given(serverLogRepository.findTop101ByServerAndLevelAndOccurredAtAfterOrderByOccurredAtDesc(eq(server), eq("ERROR"), any()))
+                .willReturn(new ArrayList<>(List.of(
+                        errorLog("upstream failed: HTTP 502"),
+                        errorLog("upstream failed: HTTP 502")
+                )));
+
+        ErrorLogAnalysisDto result = logService.analyzeErrorLogs("test-server");
+
+        assertThat(result.getHttpStatusCounts()).containsEntry("502", 2L);
+    }
+
+    @Test
     void 에러없으면_집계도_빈맵() {
         given(serverLogRepository.findTop101ByServerAndLevelAndOccurredAtAfterOrderByOccurredAtDesc(eq(server), eq("ERROR"), any()))
                 .willReturn(Collections.emptyList());

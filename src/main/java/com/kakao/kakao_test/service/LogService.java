@@ -140,6 +140,7 @@ public class LogService {
     // HTTP 상태 코드 추출: "route=200"처럼 문맥 없는 숫자를 오탐하지 않도록 status/HTTP 문맥이 붙은 경우만 매칭
     private static final Pattern HTTP_STATUS_PATTERN = Pattern.compile(
             "(?i)status(?:\\s*code)?\\s*[:=]\\s*([1-5]\\d{2})\\b" +
+            "|\\bHTTP\\s+([1-5]\\d{2})\\b" +
             "|HTTP/\\d\\.\\d\"\\s+([1-5]\\d{2})\\b" +
             "|\\b([1-5]\\d{2})\\s+(?:OK|Created|Accepted|No Content|Bad Request|Unauthorized|Forbidden|Not Found|" +
             "Method Not Allowed|Conflict|Too Many Requests|Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout)\\b"
