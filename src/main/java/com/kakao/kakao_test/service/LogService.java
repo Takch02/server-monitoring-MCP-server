@@ -23,6 +23,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 @Slf4j
@@ -131,6 +133,18 @@ public class LogService {
     static final int LOG_LIMIT = 100;
     static final int DEFAULT_WINDOW_HOURS = 24;
 
+    // 예외 타입 추출: "java.lang.NullPointerException" 같은 FQCN에서 단순 클래스명만 캡처
+    private static final Pattern EXCEPTION_TYPE_PATTERN =
+            Pattern.compile("(?:[A-Za-z_][A-Za-z0-9_]*\\.)*([A-Za-z_][A-Za-z0-9_]*(?:Exception|Error))\\b");
+
+    // HTTP 상태 코드 추출: "route=200"처럼 문맥 없는 숫자를 오탐하지 않도록 status/HTTP 문맥이 붙은 경우만 매칭
+    private static final Pattern HTTP_STATUS_PATTERN = Pattern.compile(
+            "(?i)status(?:\\s*code)?\\s*[:=]\\s*([1-5]\\d{2})\\b" +
+            "|HTTP/\\d\\.\\d\"\\s+([1-5]\\d{2})\\b" +
+            "|\\b([1-5]\\d{2})\\s+(?:OK|Created|Accepted|No Content|Bad Request|Unauthorized|Forbidden|Not Found|" +
+            "Method Not Allowed|Conflict|Too Many Requests|Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout)\\b"
+    );
+
     public ErrorLogAnalysisDto analyzeErrorLogs(String name) {
         return analyzeErrorLogs(name, DEFAULT_WINDOW_HOURS);
     }
@@ -182,7 +196,8 @@ public class LogService {
 
         if (errorLogs.isEmpty()) {
             return new ErrorLogAnalysisDto(name, List.of(), 0,
-                    "✅ 최근 " + windowHours + "시간 내 수집된 에러 로그가 없습니다.", windowHours, truncated);
+                    "✅ 최근 " + windowHours + "시간 내 수집된 에러 로그가 없습니다.", windowHours, truncated,
+                    Map.of(), Map.of());
         }
 
         List<String> errors = new ArrayList<>();
@@ -218,11 +233,44 @@ public class LogService {
             String summary = truncated
                     ? "✅ 분석 범위(최근 " + windowHours + "h, 100건 샘플)에서는 에러 없음 — 범위 밖 로그는 확인되지 않았습니다."
                     : "✅ 최근 " + windowHours + "시간 내 에러가 없습니다.";
-            return new ErrorLogAnalysisDto(name, List.of(), 0, summary, windowHours, truncated);
+            return new ErrorLogAnalysisDto(name, List.of(), 0, summary, windowHours, truncated,
+                    Map.of(), Map.of());
+        }
+
+        // (C) 예외 타입 / HTTP 상태 코드 집계 (표시 중인 100건 샘플 기준)
+        Map<String, Long> exceptionTypeCounts = new LinkedHashMap<>();
+        Map<String, Long> httpStatusCounts = new LinkedHashMap<>();
+        for (ServerLog log : errorLogs) {
+            String msg = safe(log.getMessage());
+
+            String exceptionType = extractExceptionType(msg);
+            if (exceptionType != null) {
+                exceptionTypeCounts.merge(exceptionType, 1L, Long::sum);
+            }
+
+            String httpStatus = extractHttpStatus(msg);
+            if (httpStatus != null) {
+                httpStatusCounts.merge(httpStatus, 1L, Long::sum);
+            }
         }
 
         return new ErrorLogAnalysisDto(name, errors, errors.size(),
-                "⚠️ 최근 " + windowHours + "시간 내 에러 로그가 발견되었습니다.", windowHours, truncated);
+                "⚠️ 최근 " + windowHours + "시간 내 에러 로그가 발견되었습니다.", windowHours, truncated,
+                exceptionTypeCounts, httpStatusCounts);
+    }
+
+    private String extractExceptionType(String message) {
+        Matcher m = EXCEPTION_TYPE_PATTERN.matcher(message);
+        return m.find() ? m.group(1) : null;
+    }
+
+    private String extractHttpStatus(String message) {
+        Matcher m = HTTP_STATUS_PATTERN.matcher(message);
+        if (!m.find()) return null;
+        for (int i = 1; i <= m.groupCount(); i++) {
+            if (m.group(i) != null) return m.group(i);
+        }
+        return null;
     }
 
     // --- 유틸리티 메서드 ---
@@ -231,11 +279,6 @@ public class LogService {
     private LocalDateTime convertTimestamp(Long ts) {
         if (ts == null) return LocalDateTime.now();
         return LocalDateTime.ofInstant(Instant.ofEpochMilli(ts), ZoneId.systemDefault());
-    }
-
-    private boolean containsExceptionHint(String msg) {
-        if (msg == null) return false;
-        return msg.contains("Exception") || msg.contains("ERROR") || msg.contains("Caused by");
     }
 
     private String safe(String s) {

@@ -179,6 +179,64 @@ class LogServiceTest {
         assertThat(result.toString()).contains("상한 도달");
     }
 
+    // ===== analyzeErrorLogs — 예외 타입 / HTTP 상태 코드 집계 =====
+
+    @Test
+    void 예외타입별_건수가_집계됨() {
+        given(serverLogRepository.findTop101ByServerAndLevelAndOccurredAtAfterOrderByOccurredAtDesc(eq(server), eq("ERROR"), any()))
+                .willReturn(new ArrayList<>(List.of(
+                        errorLog("java.lang.NullPointerException: null"),
+                        errorLog("java.lang.NullPointerException: null (route=200)"),
+                        errorLog("java.net.SocketTimeoutException: 버스 API 연결 시간 초과")
+                )));
+
+        ErrorLogAnalysisDto result = logService.analyzeErrorLogs("test-server");
+
+        assertThat(result.getExceptionTypeCounts())
+                .containsEntry("NullPointerException", 2L)
+                .containsEntry("SocketTimeoutException", 1L);
+    }
+
+    @Test
+    void 문맥없는_숫자는_상태코드로_오탐되지않음() {
+        given(serverLogRepository.findTop101ByServerAndLevelAndOccurredAtAfterOrderByOccurredAtDesc(eq(server), eq("ERROR"), any()))
+                .willReturn(new ArrayList<>(List.of(
+                        errorLog("버스 API ConnectionTimeout — route=200"),
+                        errorLog("캐시 미스로 인한 NPE — route=100 seq=1")
+                )));
+
+        ErrorLogAnalysisDto result = logService.analyzeErrorLogs("test-server");
+
+        assertThat(result.getHttpStatusCounts()).isEmpty();
+    }
+
+    @Test
+    void status코드_문맥이있으면_HTTP상태코드로_집계됨() {
+        given(serverLogRepository.findTop101ByServerAndLevelAndOccurredAtAfterOrderByOccurredAtDesc(eq(server), eq("ERROR"), any()))
+                .willReturn(new ArrayList<>(List.of(
+                        errorLog("외부 API 호출 실패: statusCode=500"),
+                        errorLog("요청 거부: status=404"),
+                        errorLog("요청 거부: status=404")
+                )));
+
+        ErrorLogAnalysisDto result = logService.analyzeErrorLogs("test-server");
+
+        assertThat(result.getHttpStatusCounts())
+                .containsEntry("500", 1L)
+                .containsEntry("404", 2L);
+    }
+
+    @Test
+    void 에러없으면_집계도_빈맵() {
+        given(serverLogRepository.findTop101ByServerAndLevelAndOccurredAtAfterOrderByOccurredAtDesc(eq(server), eq("ERROR"), any()))
+                .willReturn(Collections.emptyList());
+
+        ErrorLogAnalysisDto result = logService.analyzeErrorLogs("test-server");
+
+        assertThat(result.getExceptionTypeCounts()).isEmpty();
+        assertThat(result.getHttpStatusCounts()).isEmpty();
+    }
+
     // ===== ingestLogs =====
 
     @Test
