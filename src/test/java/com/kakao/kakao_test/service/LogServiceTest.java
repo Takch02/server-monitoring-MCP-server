@@ -137,6 +137,21 @@ class LogServiceTest {
     }
 
     @Test
+    void 중복로그가_축약되어도_errorCount는_실제_로그건수를_반환() {
+        String sameMsg = "Connection refused to DB";
+        given(serverLogRepository.findTop101ByServerAndLevelAndOccurredAtAfterOrderByOccurredAtDesc(eq(server), eq("ERROR"), any()))
+                .willReturn(new ArrayList<>(List.of(
+                        errorLog(sameMsg),
+                        errorLog(sameMsg),
+                        errorLog(sameMsg)
+                )));
+
+        ErrorLogAnalysisDto result = logService.analyzeErrorLogs("test-server");
+
+        assertThat(result.getErrorCount()).isEqualTo(3);
+    }
+
+    @Test
     void 메시지500자초과시_생략표시() {
         given(serverLogRepository.findTop101ByServerAndLevelAndOccurredAtAfterOrderByOccurredAtDesc(eq(server), eq("ERROR"), any()))
                 .willReturn(new ArrayList<>(List.of(errorLog("E".repeat(600)))));

@@ -254,7 +254,7 @@ public class LogService {
             }
         }
 
-        return new ErrorLogAnalysisDto(name, errors, errors.size(),
+        return new ErrorLogAnalysisDto(name, errors, errorLogs.size(),
                 "⚠️ 최근 " + windowHours + "시간 내 에러 로그가 발견되었습니다.", windowHours, truncated,
                 exceptionTypeCounts, httpStatusCounts);
     }
