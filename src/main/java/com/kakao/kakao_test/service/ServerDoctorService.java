@@ -41,7 +41,7 @@ public class ServerDoctorService {
         }
 
         if (logAnalysis.getErrorCount() > 0) {
-            sb.append("\n**3. 예외 타입 / HTTP 상태 코드 집계:**\n")
+            sb.append("\n- 예외 타입 / HTTP 상태 코드 집계:\n")
               .append(logAnalysis.formatAggregation()).append("\n");
             sb.append("- 주요 로그 내역:\n```text\n");
             // 로그 원문을 그대로 Claude에게 전달 (토큰 제한 고려하여 적당히 자르기)
