@@ -27,8 +27,8 @@ public class ServerDoctorMcpTools {
      */
     @McpTool(
             name = "list_demo_servers",
-            description = "Server Doctor(서버 닥터)에서 PlayMCP 원격 환경에서 즉시 체험 가능한 데모 서버 목록을 반환합니다. 실제 사용자 서버 목록은 반환하지 않습니다. "
-                    + "(EN) Returns the list of demo servers available for instant trial on Server Doctor via PlayMCP. Does not return real user servers.",
+            description = "Spring 서버 진단 MCP에서 PlayMCP 원격 환경에서 즉시 체험 가능한 데모 서버 목록을 반환합니다. 실제 사용자 서버 목록은 반환하지 않습니다. "
+                    + "(EN) Returns the list of demo servers available for instant trial on Spring Server Diagnostics MCP via PlayMCP. Does not return real user servers.",
             annotations = @McpAnnotations(
                     title = "데모 서버 목록 조회",
                     readOnlyHint = true,
@@ -58,8 +58,8 @@ public class ServerDoctorMcpTools {
 
     @McpTool(
         name = "diagnose_server",
-        description = "Server Doctor(서버 닥터)가 대상 서버의 최근 에러 로그와 리소스 상태를 조회하여 종합적으로 분석합니다. "
-                + "(EN) Server Doctor comprehensively analyzes recent error logs and resource status of the target server.",
+        description = "Spring 서버 진단 MCP가 대상 서버의 최근 에러 로그와 리소스 상태를 조회하여 종합적으로 분석합니다. "
+                + "(EN) Spring Server Diagnostics MCP comprehensively analyzes recent error logs and resource status of the target server.",
         annotations = @McpAnnotations(
                 title = "서버 종합 진단",
                 readOnlyHint = true,
@@ -78,8 +78,8 @@ public class ServerDoctorMcpTools {
 
     @McpTool(
         name = "fetch_error_logs",
-        description = "Server Doctor(서버 닥터)가 서버에서 최근 발생한 에러 로그들을 조회 후 분석합니다. "
-                + "(EN) Server Doctor fetches and analyzes recent error logs from the server.",
+        description = "Spring 서버 진단 MCP가 서버에서 최근 발생한 에러 로그들을 조회 후 분석합니다. "
+                + "(EN) Spring Server Diagnostics MCP fetches and analyzes recent error logs from the server.",
         annotations = @McpAnnotations(
                 title = "에러 로그 조회",
                 readOnlyHint = true,
@@ -99,8 +99,8 @@ public class ServerDoctorMcpTools {
 
     @McpTool(
         name = "fetch_recent_logs",
-        description = "Server Doctor(서버 닥터)가 서버의 최근 로그를 INFO/WARN/ERROR 레벨 구분 없이 최신순으로 조회합니다. 에러 외 흐름을 파악하거나 장애 전후 맥락을 확인할 때 사용하세요. "
-                + "(EN) Server Doctor fetches the server's recent logs in latest-first order across INFO/WARN/ERROR levels. Use it to understand flow beyond errors or the context around an incident.",
+        description = "Spring 서버 진단 MCP가 서버의 최근 로그를 INFO/WARN/ERROR 레벨 구분 없이 최신순으로 조회합니다. 에러 외 흐름을 파악하거나 장애 전후 맥락을 확인할 때 사용하세요. "
+                + "(EN) Spring Server Diagnostics MCP fetches the server's recent logs in latest-first order across INFO/WARN/ERROR levels. Use it to understand flow beyond errors or the context around an incident.",
         annotations = @McpAnnotations(
                 title = "최근 로그 조회",
                 readOnlyHint = true,
@@ -119,8 +119,8 @@ public class ServerDoctorMcpTools {
 
     @McpTool(
         name = "register_server",
-        description = "Server Doctor(서버 닥터)에 모니터링할 새로운 대상 서버를 등록하고, 연동 가이드(yml, env 등)를 생성합니다. "
-                + "(EN) Registers a new target server to monitor on Server Doctor and generates an integration guide (yml, env, etc).",
+        description = "Spring 서버 진단 MCP에 모니터링할 새로운 대상 서버를 등록하고, 연동 가이드(yml, env 등)를 생성합니다. "
+                + "(EN) Registers a new target server to monitor on Spring Server Diagnostics MCP and generates an integration guide (yml, env, etc).",
         annotations = @McpAnnotations(
                 title = "서버 등록",
                 readOnlyHint = false,
@@ -143,8 +143,8 @@ public class ServerDoctorMcpTools {
 
     @McpTool(
             name = "get_health_status",
-            description = "Server Doctor(서버 닥터)가 서버의 현재 Health 상태(UP/DOWN), 마지막 체크 시각, latency, stale 여부(60초 기준)를 반환합니다. "
-                    + "(EN) Server Doctor returns the server's current health status (UP/DOWN), last check time, latency, and staleness (60s threshold).",
+            description = "Spring 서버 진단 MCP가 서버의 현재 Health 상태(UP/DOWN), 마지막 체크 시각, latency, stale 여부(60초 기준)를 반환합니다. "
+                    + "(EN) Spring Server Diagnostics MCP returns the server's current health status (UP/DOWN), last check time, latency, and staleness (60s threshold).",
             annotations = @McpAnnotations(
                     title = "헬스 상태 조회",
                     readOnlyHint = true,
@@ -161,8 +161,8 @@ public class ServerDoctorMcpTools {
 
     @McpTool(
         name = "get_setup_guide",
-        description = "Server Doctor(서버 닥터) 모니터링을 시작하는 방법을 보여줍니다. Application.yml, docker-compose.yml, .env 설정에 대해 알려줍니다. "
-                + "(EN) Shows how to start monitoring with Server Doctor, covering application.yml, docker-compose.yml, and .env configuration.",
+        description = "Spring 서버 진단 MCP 모니터링을 시작하는 방법을 보여줍니다. Application.yml, docker-compose.yml, .env 설정에 대해 알려줍니다. "
+                + "(EN) Shows how to start monitoring with Spring Server Diagnostics MCP, covering application.yml, docker-compose.yml, and .env configuration.",
         annotations = @McpAnnotations(
                 title = "설치 가이드 조회",
                 readOnlyHint = true,
