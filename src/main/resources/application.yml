@@ -52,4 +52,28 @@ forwarder:
 
 mcp:
   server-url: ${AWS_URL}
-
+  tool-rate-limit:
+    default-permits-per-minute: 30
+    default-burst-capacity: 5
+    tools:
+      get_health_status:
+        permits-per-minute: 120
+        burst-capacity: 20
+      fetch_recent_logs:
+        permits-per-minute: 30
+        burst-capacity: 5
+      fetch_error_logs:
+        permits-per-minute: 30
+        burst-capacity: 5
+      diagnose_server:
+        permits-per-minute: 15
+        burst-capacity: 3
+      list_demo_servers:
+        permits-per-minute: 30
+        burst-capacity: 5
+      get_setup_guide:
+        permits-per-minute: 30
+        burst-capacity: 5
+      register_server:
+        permits-per-minute: 5
+        burst-capacity: 1

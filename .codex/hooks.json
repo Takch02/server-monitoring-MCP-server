@@ -1,13 +1,23 @@
 {
+  "description": "Java 편집 후 테스트와 커밋 전 회귀 검증을 실행합니다.",
   "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/zsh \"$(git rev-parse --show-toplevel)/.codex/hooks/run_java_tests.sh\"",
+            "timeout": 180,
+            "statusMessage": "Java 변경 테스트 실행 중..."
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
         "hooks": [
-          {
-            "type": "command",
-            "command": "jq -r '\"[\" + (now | todate) + \"] \" + ((.tool_input.command // \"\") | split(\" \")[0])' >> ~/.claude/kakao_test-bash-log.txt 2>/dev/null || true"
-          },
           {
             "type": "command",
             "command": "cmd=$(jq -r '.tool_input.command // \"\"'); echo \"$cmd\" | grep -q 'git commit' || exit 0; ./gradlew test -q >/tmp/kakao_precommit_test.log 2>&1 && exit 0; echo '커밋 차단: ./gradlew test 실패. /tmp/kakao_precommit_test.log 확인 후 수정하세요.' >&2; exit 2"
