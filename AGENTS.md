@@ -66,3 +66,10 @@
 ./gradlew bootRun       # 로컬 실행
 gh run list --limit 5   # 최근 CI 결과
 ```
+
+## 5. 명령 출력 토큰 절약
+
+RTK(Rust Token Killer)가 설치된 환경에서는, 출력이 크거나 반복적인 셸 명령에 `rtk` 래퍼를 우선 사용한다.
+
+- 예: `rtk git status`, `rtk git diff`, `rtk git log`, `rtk test ./gradlew test`
+- 소스 코드의 정확한 행 내용, 전체 컴파일 오류 등 원문이 필요한 경우에는 `rg`, `sed`, `./gradlew` 원문 출력을 필요한 범위로 제한해 사용한다.
