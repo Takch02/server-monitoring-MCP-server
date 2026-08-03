@@ -54,6 +54,7 @@
 | service 로직을 새로 만들거나 버그를 고친다 | [docs/agent/testing.md](docs/agent/testing.md) | 단위 테스트 필수 + 이 프로젝트만의 테스트 스타일 |
 | 구현이 끝나서 커밋/PR로 넘어가려 한다 | [docs/agent/verification.md](docs/agent/verification.md) | code-review/security-review/verify-and-ci 적용 시점과 순서 |
 | `git commit`을 실행하려 한다 (매번) | [docs/agent/commit.md](docs/agent/commit.md) | 커밋 메시지 형식 + **논리적 변경 하나당 커밋 하나** 원칙 |
+| PR 또는 Issue를 생성·수정한다 | [docs/agent/github-workflow.md](docs/agent/github-workflow.md) | 제목 접두사·본문 형식·생성 절차를 통일 |
 | 시크릿/CI/Actuator/배포 워크플로우를 건드린다 | [docs/agent/prohibited.md](docs/agent/prohibited.md) | 절대 하면 안 되는 것 목록 |
 
 ---
