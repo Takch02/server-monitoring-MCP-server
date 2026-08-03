@@ -9,6 +9,7 @@ fi
 
 repo_root=$(git rev-parse --show-toplevel) || exit 0
 test_log=$(mktemp /private/tmp/kakao-java-edit-test.XXXXXX)
+trap 'rm -f "$test_log"' EXIT
 
 cd "$repo_root" || exit 0
 if ./gradlew test -q >"$test_log" 2>&1; then
