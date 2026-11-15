@@ -10,7 +10,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
+import com.kakao.kakao_test.config.DiagnosticProperties;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneId;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -30,12 +33,15 @@ class MetricServiceTest {
     @Mock DiscordNotificationService discordNotificationService;
     @Mock ServerHeartbeatService serverHeartbeatService;
 
-    @InjectMocks MetricService metricService;
+    private final Clock clock = Clock.fixed(Instant.parse("2026-11-15T00:00:00Z"), ZoneId.systemDefault());
+    private MetricService metricService;
 
     private TargetServer server;
 
     @BeforeEach
     void setUp() {
+        metricService = new MetricService(targetServerRepository, serverMetricRepository,
+                discordNotificationService, serverHeartbeatService, clock, new DiagnosticProperties());
         server = TargetServer.builder()
                 .serverName("test-server")
                 .mcpToken("valid-token")
@@ -92,46 +98,46 @@ class MetricServiceTest {
 
     @Test
     void 히스토리없음_데이터없음반환() {
-        given(serverMetricRepository.findTop50ByServerOrderByCapturedAtDesc(server))
+        given(serverMetricRepository.findByServerAndCapturedAtBetweenOrderByCapturedAtDesc(eq(server), any(), any()))
                 .willReturn(Collections.emptyList());
 
-        assertThat(metricService.getMetricTrend("test-server")).isEqualTo("데이터 없음");
+        assertThat(metricService.getMetricTrend("test-server")).contains("UNKNOWN").contains("지표가 없어");
     }
 
     @Test
     void 정상범위_안정적반환() {
-        given(serverMetricRepository.findTop50ByServerOrderByCapturedAtDesc(server))
+        given(serverMetricRepository.findByServerAndCapturedAtBetweenOrderByCapturedAtDesc(eq(server), any(), any()))
                 .willReturn(List.of(
                         metric(30.0, 500.0, 1000.0),
                         metric(40.0, 400.0, 1000.0)
                 ));
 
-        assertThat(metricService.getMetricTrend("test-server")).contains("✅");
+        assertThat(metricService.getMetricTrend("test-server")).contains("NORMAL");
     }
 
     @Test
     void CPU80초과_불안정경고반환() {
-        given(serverMetricRepository.findTop50ByServerOrderByCapturedAtDesc(server))
+        given(serverMetricRepository.findByServerAndCapturedAtBetweenOrderByCapturedAtDesc(eq(server), any(), any()))
                 .willReturn(List.of(
                         metric(90.0, 500.0, 1000.0),
                         metric(30.0, 400.0, 1000.0)
                 ));
 
         String result = metricService.getMetricTrend("test-server");
-        assertThat(result).contains("⚠️");
+        assertThat(result).contains("WARNING");
         assertThat(result).contains("CPU 80%");
     }
 
     @Test
     void 메모리90초과_불안정경고반환() {
-        given(serverMetricRepository.findTop50ByServerOrderByCapturedAtDesc(server))
+        given(serverMetricRepository.findByServerAndCapturedAtBetweenOrderByCapturedAtDesc(eq(server), any(), any()))
                 .willReturn(List.of(
                         metric(30.0, 950.0, 1000.0),
                         metric(30.0, 400.0, 1000.0)
                 ));
 
         String result = metricService.getMetricTrend("test-server");
-        assertThat(result).contains("⚠️");
+        assertThat(result).contains("WARNING");
         assertThat(result).contains("메모리 80% 초과");
     }
 
@@ -159,7 +165,7 @@ class MetricServiceTest {
                 .cpuUsage(cpuPercent)
                 .memoryUsedMb(memUsedMb)
                 .memoryMaxMb(memMaxMb)
-                .capturedAt(LocalDateTime.now())
+                .capturedAt(LocalDateTime.ofInstant(clock.instant(), ZoneId.systemDefault()))
                 .build();
     }
 }

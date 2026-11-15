@@ -1,5 +1,6 @@
 package com.kakao.kakao_test.service;
 
+import com.kakao.kakao_test.config.DiagnosticProperties;
 import com.kakao.kakao_test.domain.ServerHealthEvent;
 import com.kakao.kakao_test.domain.TargetServer;
 import com.kakao.kakao_test.dto.HealthIngestDto;
@@ -10,6 +11,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.Duration;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -18,7 +22,8 @@ public class HealthService {
     private final TargetServerRepository targetServerRepository;
     private final ServerHealthEventRepository healthEventRepository;
     private final ServerHeartbeatService serverHeartbeatService;
-    private static final int STALE_SECONDS = 60; // 60초가 지나면 오래된 정보로 인식하여 서버가 죽었다 판단
+    private final Clock clock;
+    private final DiagnosticProperties diagnosticProperties;
 
     @Transactional
     public void saveHealth(String serverName, HealthIngestDto dto, String token) {
@@ -35,7 +40,7 @@ public class HealthService {
 
         // 2) 입력 정규화
         String newStatus = normalizeStatus(dto.status(), dto.httpStatus());
-        long ts = (dto.ts() > 0) ? dto.ts() : System.currentTimeMillis();
+        long ts = (dto.ts() > 0) ? dto.ts() : clock.millis();
         String safeMsg = safeMessage(dto.message());
 
         // 3) 이벤트 저장(이력)
@@ -57,17 +62,28 @@ public class HealthService {
      */
     @Transactional(readOnly = true)
     public String getHealthStatusForMcp(String serverName) {
-        ServerHealthEvent latestOpt = healthEventRepository.findTop1ByServerNameOrderByTsDesc(serverName).orElseThrow(
-                () -> new IllegalArgumentException("Health 데이터가 없습니다. forwarder HEALTH_URL 및 health ingest 설정을 확인하세요. (serverName=" +
-                        serverName + ")")
-        );
+        ServerHealthEvent latest = healthEventRepository.findTop1ByServerNameOrderByTsDesc(serverName)
+                .orElseThrow(() -> new IllegalArgumentException("Health 데이터가 없습니다. forwarder HEALTH_URL 및 health ingest 설정을 확인하세요. (serverName=" + serverName + ")"));
+        return formatHealthStatus(latest);
+    }
 
+    @Transactional(readOnly = true)
+    public String getHealthStatusForDiagnosis(String serverName) {
+        return healthEventRepository.findTop1ByServerNameOrderByTsDesc(serverName)
+                .map(this::formatHealthStatus)
+                .orElse("Health: UNKNOWN — Health 데이터가 없어 현재 응답 상태를 확인할 수 없습니다.");
+    }
 
-        long now = System.currentTimeMillis();
+    private String formatHealthStatus(ServerHealthEvent latestOpt) {
+        long now = clock.millis();
         long ageMs = now - latestOpt.getTs();
-        boolean stale = ageMs > (STALE_SECONDS * 1000L);
+        boolean stale = Duration.ofMillis(ageMs).compareTo(Duration.ofSeconds(diagnosticProperties.getStaleSeconds())) > 0;
 
         String lastAt = java.time.Instant.ofEpochMilli(latestOpt.getTs()).toString();
+
+        if (ageMs < 0) {
+            return "Health: UNKNOWN — 관측 시각이 미래여서 현재 상태를 판정할 수 없습니다.\nLastCheck: " + lastAt;
+        }
 
         if (stale) {
             double ageSeconds = ageMs / 1000.0;
