@@ -1,5 +1,6 @@
 package com.kakao.kakao_test.service;
 
+import com.kakao.kakao_test.config.DiagnosticProperties;
 import com.kakao.kakao_test.domain.ServerMetric;
 import com.kakao.kakao_test.domain.TargetServer;
 import com.kakao.kakao_test.dto.MetricIngestDto;
@@ -10,6 +11,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 @Slf4j
@@ -22,6 +27,8 @@ public class MetricService {
     private final ServerMetricRepository serverMetricRepository;
     private final DiscordNotificationService discordNotificationService;
     private final ServerHeartbeatService serverHeartbeatService;
+    private final Clock clock;
+    private final DiagnosticProperties diagnosticProperties;
 
     /**
      * [1] 데이터 수집 (Ingest)
@@ -55,7 +62,7 @@ public class MetricService {
 
         if (cpuPercent > 80.0 || memPercent > 80.0) {
             String alertMsg = String.format(
-                    "리소스 사용량이 높습니다!\n🔥 CPU: %.1f%%\n💾 RAM: %.1f%% (%.0fMB / %.0fMB)",
+                    "리소스 사용량이 높습니다!\n🔥 CPU: %.1f%%\n💾 JVM 메모리: %.1f%% (%.0fMB / %.0fMB)",
                     cpuPercent, memPercent, memUsedMb, memMaxMb
             );
 
@@ -67,53 +74,61 @@ public class MetricService {
 
 
 
-    /**
-     * [2] 최근 트렌드 분석 (LLM Tools용)
-     * - 최근 10분(또는 최근 60개) 데이터를 조회하여 분석
-     */
+    /** 관측 기간과 최신성을 따로 확인해 과거의 정상 값을 현재 판정에 쓰지 않는다. */
     public String getMetricTrend(String serverName) {
         TargetServer server = targetServerRepository.getByServerName(serverName);
+        // 기존 capturedAt 저장 시 사용한 타임존과 맞춰 비교한다.
+        LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneId.systemDefault());
+        LocalDateTime from = now.minusMinutes(diagnosticProperties.getMetricWindowMinutes());
+        List<ServerMetric> history = serverMetricRepository
+                .findByServerAndCapturedAtBetweenOrderByCapturedAtDesc(server, from, now);
+        String window = "관측 범위: " + from + " ~ " + now;
 
-        // 최근 60개 데이터 조회 (약 10분치)
-        List<ServerMetric> history = serverMetricRepository.findTop50ByServerOrderByCapturedAtDesc(server);
-
-        if (history.isEmpty()) return "데이터 없음";
-
-        // 1. 평균 CPU 사용량 계산
-        double avgCpu = history.stream()
-                .mapToDouble(ServerMetric::getCpuUsage)
-                .average()
-                .orElse(0.0);
-
-        // 2. 평균 메모리 사용률 계산 (%)
-        double avgMem = history.stream()
-                .mapToDouble(m -> ((double) m.getMemoryUsedMb() / m.getMemoryMaxMb()) * 100.0)
-                .average()
-                .orElse(0.0);
-
-        // CPU가 80% 넘었던 순간이 있는지 카운팅
-        long highCpuCount = history.stream()
-                .filter(m -> m.getCpuUsage() > 80.0)
-                .count();
-
-        // 메모리가 80% 넘었던 순간
-        long highMemCount = history.stream()
-                .filter(m -> (m.getMemoryUsedMb() / m.getMemoryMaxMb() * 100.0) > 80.0)
-                .count();
-
-        // 4. 결과 문자열 포맷팅
-        String statsSummary = String.format("\n(평균 CPU: %.1f%% / 평균 RAM: %.1f%%)", avgCpu, avgMem);
-
-        if (highCpuCount > 0 || highMemCount > 0) {
-            double maxCpu = history.stream().mapToDouble(ServerMetric::getCpuUsage).max().orElse(0.0);
-
-            return String.format(
-                    "⚠️ 최근 10분간 리소스 불안정:%s\n- CPU 80%% 초과: %d회 (최대 %.1f%%)\n- 메모리 80%% 초과: %d회",
-                    statsSummary, highCpuCount, maxCpu, highMemCount
-            );
+        if (history.isEmpty()) {
+            String lastSample = serverMetricRepository.findTopByServerOrderByCapturedAtDesc(server)
+                    .map(metric -> String.valueOf(metric.getCapturedAt())).orElse("없음");
+            return "자원 상태: UNKNOWN — 조회 기간 내 지표가 없어 현재 상태를 확인할 수 없습니다.\n"
+                    + window + "\n마지막 관측 시각: " + lastSample;
         }
 
-        return "✅ 최근 10분간 시스템 리소스 상태는 매우 안정적입니다." + statsSummary;
+        LocalDateTime latest = history.getFirst().getCapturedAt();
+        String evidence = window + "\n마지막 관측 시각: " + latest + " / 관측 " + history.size() + "건";
+        if (latest == null || latest.isAfter(now)
+                || Duration.between(latest, now).compareTo(Duration.ofSeconds(diagnosticProperties.getStaleSeconds())) > 0) {
+            return "자원 상태: UNKNOWN — 지표 시각이 유효하지 않거나 오래되어 현재 상태를 확인할 수 없습니다.\n" + evidence;
+        }
+        if (history.stream().anyMatch(metric -> !validMetric(metric))) {
+            return "자원 상태: UNKNOWN — CPU 또는 JVM 메모리 값이 유효하지 않아 판정할 수 없습니다.\n" + evidence;
+        }
+
+        double avgCpu = history.stream().mapToDouble(ServerMetric::getCpuUsage).average().orElseThrow();
+        double avgMem = history.stream().mapToDouble(this::memoryPercent).average().orElseThrow();
+        long highCpuCount = history.stream().filter(metric -> metric.getCpuUsage() > 80.0).count();
+        long highMemCount = history.stream().filter(metric -> memoryPercent(metric) > 80.0).count();
+        String stats = String.format("\n평균 CPU: %.1f%% / 평균 JVM 메모리: %.1f%%", avgCpu, avgMem);
+        if (highCpuCount > 0 || highMemCount > 0) {
+            double maxCpu = history.stream().mapToDouble(ServerMetric::getCpuUsage).max().orElseThrow();
+            return String.format("자원 상태: WARNING — 관측 범위 내 임계값 초과\n%s%s\n"
+                    + "CPU 80%% 초과: %d회 (최대 %.1f%%)\nJVM 메모리 80%% 초과: %d회",
+                    evidence, stats, highCpuCount, maxCpu, highMemCount);
+        }
+        return "자원 상태: NORMAL — 관측된 지표에서 임계값 초과가 없습니다.\n" + evidence + stats
+                + "\n자원 지표만으로 서버 전체의 정상 여부를 보장하지 않습니다.";
+    }
+
+    private boolean validMetric(ServerMetric metric) {
+        return finiteNonNegative(metric.getCpuUsage()) && metric.getCpuUsage() <= 100.0
+                && finiteNonNegative(metric.getMemoryUsedMb())
+                && metric.getMemoryMaxMb() != null && Double.isFinite(metric.getMemoryMaxMb())
+                && metric.getMemoryMaxMb() > 0 && metric.getMemoryUsedMb() <= metric.getMemoryMaxMb();
+    }
+
+    private boolean finiteNonNegative(Double value) {
+        return value != null && Double.isFinite(value) && value >= 0;
+    }
+
+    private double memoryPercent(ServerMetric metric) {
+        return metric.getMemoryUsedMb() / metric.getMemoryMaxMb() * 100.0;
     }
 
     // --- Private Helpers ---

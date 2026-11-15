@@ -64,7 +64,7 @@ public class ServerDoctorMcpTools {
 
     @McpTool(
         name = "diagnose_server",
-        description = "Spring 서버 진단 MCP가 대상 서버의 최근 에러 로그와 리소스 상태를 조회하여 종합적으로 분석합니다. "
+        description = "Spring 서버 진단 MCP가 대상 서버의 Health, CPU/JVM 메모리 관측 범위·최신성, 최근 오류 로그를 제공합니다. UNKNOWN은 현재 상태를 확인할 근거가 부족하다는 뜻이며, 오류 로그 부재는 서버 정상을 의미하지 않습니다. "
                 + "(EN) Spring Server Diagnostics MCP comprehensively analyzes recent error logs and resource status of the target server.",
         annotations = @McpAnnotations(
                 title = "서버 종합 진단",
@@ -161,7 +161,7 @@ public class ServerDoctorMcpTools {
 
     @McpTool(
             name = "get_health_status",
-            description = "Spring 서버 진단 MCP가 서버의 현재 Health 상태(UP/DOWN), 마지막 체크 시각, latency, stale 여부(60초 기준)를 반환합니다. "
+            description = "Spring 서버 진단 MCP가 서버의 현재 Health 상태(UP/DOWN), 마지막 체크 시각, latency, stale 여부(기본 60초 기준, 설정 가능)를 반환합니다. "
                     + "(EN) Spring Server Diagnostics MCP returns the server's current health status (UP/DOWN), last check time, latency, and staleness (60s threshold).",
             annotations = @McpAnnotations(
                     title = "헬스 상태 조회",

@@ -8,7 +8,11 @@ import com.kakao.kakao_test.repository.TargetServerRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
+import org.junit.jupiter.api.BeforeEach;
+import com.kakao.kakao_test.config.DiagnosticProperties;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneId;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -24,7 +28,14 @@ class HealthServiceTest {
     @Mock TargetServerRepository targetServerRepository;
     @Mock ServerHealthEventRepository healthEventRepository;
     @Mock ServerHeartbeatService serverHeartbeatService;
-    @InjectMocks HealthService healthService;
+    private final Clock clock = Clock.fixed(Instant.parse("2026-11-15T00:00:00Z"), ZoneId.systemDefault());
+    private HealthService healthService;
+
+    @BeforeEach
+    void setUp() {
+        healthService = new HealthService(targetServerRepository, healthEventRepository,
+                serverHeartbeatService, clock, new DiagnosticProperties());
+    }
 
     // ===== saveHealth =====
 
@@ -62,7 +73,7 @@ class HealthServiceTest {
     void ts0이면_현재시간사용() {
         given(targetServerRepository.findByServerName("my-server"))
                 .willReturn(Optional.of(server("my-server", "token")));
-        long before = System.currentTimeMillis();
+        long before = clock.millis();
 
         healthService.saveHealth("my-server", dto("UP", 200, 0, null), "token");
 
@@ -160,7 +171,7 @@ class HealthServiceTest {
     @Test
     void getHealthStatus_정상_status포함문자열반환() {
         given(healthEventRepository.findTop1ByServerNameOrderByTsDesc("my-server"))
-                .willReturn(Optional.of(event("UP", 200, 100L, System.currentTimeMillis() - 5_000)));
+                .willReturn(Optional.of(event("UP", 200, 100L, clock.millis() - 5_000)));
 
         String result = healthService.getHealthStatusForMcp("my-server");
 
@@ -171,7 +182,7 @@ class HealthServiceTest {
 
     @Test
     void getHealthStatus_60초초과_staleYES() {
-        long staleTs = System.currentTimeMillis() - 70_000;
+        long staleTs = clock.millis() - 70_000;
         given(healthEventRepository.findTop1ByServerNameOrderByTsDesc("my-server"))
                 .willReturn(Optional.of(event("UP", 200, 50L, staleTs)));
 
@@ -183,7 +194,7 @@ class HealthServiceTest {
 
     @Test
     void getHealthStatus_최근데이터_staleNO() {
-        long recentTs = System.currentTimeMillis() - 10_000;
+        long recentTs = clock.millis() - 10_000;
         given(healthEventRepository.findTop1ByServerNameOrderByTsDesc("my-server"))
                 .willReturn(Optional.of(event("UP", 200, 50L, recentTs)));
 
@@ -191,6 +202,29 @@ class HealthServiceTest {
 
         assertThat(result).contains("Health: UP");
         assertThat(result).contains("ago");
+    }
+
+    @Test
+    void 정확히_60초전_Health는_최신으로_판정한다() {
+        given(healthEventRepository.findTop1ByServerNameOrderByTsDesc("my-server"))
+                .willReturn(Optional.of(event("UP", 200, 3L, clock.millis() - 60_000)));
+        assertThat(healthService.getHealthStatusForMcp("my-server")).contains("Health: UP");
+    }
+
+    @Test
+    void 미래시각_Health는_UNKNOWN으로_판정한다() {
+        given(healthEventRepository.findTop1ByServerNameOrderByTsDesc("my-server"))
+                .willReturn(Optional.of(event("UP", 200, 3L, clock.millis() + 1_000)));
+        assertThat(healthService.getHealthStatusForMcp("my-server"))
+                .contains("Health: UNKNOWN", "미래").doesNotContain("Health: UP");
+    }
+
+    @Test
+    void 종합진단은_Health가_없어도_UNKNOWN으로_계속한다() {
+        given(healthEventRepository.findTop1ByServerNameOrderByTsDesc("my-server"))
+                .willReturn(Optional.empty());
+        assertThat(healthService.getHealthStatusForDiagnosis("my-server"))
+                .contains("Health: UNKNOWN", "데이터가 없어");
     }
 
     // ===== helpers =====
