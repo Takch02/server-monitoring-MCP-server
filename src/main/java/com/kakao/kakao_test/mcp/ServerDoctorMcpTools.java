@@ -13,9 +13,15 @@ import org.springaicommunity.mcp.annotation.McpTool.McpAnnotations;
 import org.springaicommunity.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Component;
 
+import java.util.function.IntFunction;
+
 @Component
 @RequiredArgsConstructor
 public class ServerDoctorMcpTools {
+
+    private static final int DEFAULT_SINCE_HOURS = 24;
+    private static final int MIN_SINCE_HOURS = 1;
+    private static final int MAX_SINCE_HOURS = 168;
 
     private final ServerDoctorService serverDoctorService;
     private final LogService logService;
@@ -70,10 +76,10 @@ public class ServerDoctorMcpTools {
     )
     public String diagnoseServer(
         @McpToolParam(description = "진단할 서버 이름") String serverName,
-        @McpToolParam(description = "조회 시간 범위(시간 단위). 기본값 24. 데모 서버처럼 오래된 로그만 있을 경우 더 크게 설정하세요. 예: 168 (7일)") Integer sinceHours
+        @McpToolParam(description = "조회 시간 범위(시간 단위). 미입력 시 24. 허용 범위는 1~168이며 범위 밖이면 INVALID_ARGUMENT 오류를 반환합니다. 예: 168 (7일)") Integer sinceHours
     ) {
-        int hours = (sinceHours == null || sinceHours <= 0) ? 24 : sinceHours;
-        return serverDoctorService.diagnoseForMcp(serverName, hours);
+        return withValidatedSinceHours(sinceHours,
+                hours -> serverDoctorService.diagnoseForMcp(serverName, hours));
     }
 
     @McpTool(
@@ -90,11 +96,12 @@ public class ServerDoctorMcpTools {
     )
     public String fetchErrorLogs(
         @McpToolParam(description = "대상 서버 이름") String serverName,
-        @McpToolParam(description = "조회 시간 범위(시간 단위). 기본값 24. 데모 서버처럼 오래된 로그만 있을 경우 더 크게 설정하세요. 예: 168 (7일)") Integer sinceHours
+        @McpToolParam(description = "조회 시간 범위(시간 단위). 미입력 시 24. 허용 범위는 1~168이며 범위 밖이면 INVALID_ARGUMENT 오류를 반환합니다. 예: 168 (7일)") Integer sinceHours
     ) {
-        int hours = (sinceHours == null || sinceHours <= 0) ? 24 : sinceHours;
-        ErrorLogAnalysisDto logs = logService.analyzeErrorLogs(serverName, hours);
-        return (logs.getErrorCount() == 0) ? "발견된 에러 로그가 없습니다. (최근 " + hours + "h 기준)" : logs.toString();
+        return withValidatedSinceHours(sinceHours, hours -> {
+            ErrorLogAnalysisDto logs = logService.analyzeErrorLogs(serverName, hours);
+            return (logs.getErrorCount() == 0) ? "발견된 에러 로그가 없습니다. (최근 " + hours + "h 기준)" : logs.toString();
+        });
     }
 
     @McpTool(
@@ -111,10 +118,21 @@ public class ServerDoctorMcpTools {
     )
     public String fetchRecentLogs(
         @McpToolParam(description = "대상 서버 이름") String serverName,
-        @McpToolParam(description = "조회 시간 범위(시간 단위). 기본값 24. 예: 168 (7일)") Integer sinceHours
+        @McpToolParam(description = "조회 시간 범위(시간 단위). 미입력 시 24. 허용 범위는 1~168이며 범위 밖이면 INVALID_ARGUMENT 오류를 반환합니다. 예: 168 (7일)") Integer sinceHours
     ) {
-        int hours = (sinceHours == null || sinceHours <= 0) ? 24 : sinceHours;
-        return logService.fetchRecentLogs(serverName, hours);
+        return withValidatedSinceHours(sinceHours,
+                hours -> logService.fetchRecentLogs(serverName, hours));
+    }
+
+    private String withValidatedSinceHours(Integer sinceHours, IntFunction<String> toolCall) {
+        int hours = sinceHours == null ? DEFAULT_SINCE_HOURS : sinceHours;
+        if (hours < MIN_SINCE_HOURS || hours > MAX_SINCE_HOURS) {
+            return String.format(
+                    "{\"error\":\"INVALID_ARGUMENT\",\"field\":\"sinceHours\",\"message\":\"sinceHours must be between %d and %d hours\",\"min\":%d,\"max\":%d}",
+                    MIN_SINCE_HOURS, MAX_SINCE_HOURS, MIN_SINCE_HOURS, MAX_SINCE_HOURS
+            );
+        }
+        return toolCall.apply(hours);
     }
 
     @McpTool(
