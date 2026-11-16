@@ -31,7 +31,6 @@ class MetricServiceTest {
     @Mock TargetServerRepository targetServerRepository;
     @Mock ServerMetricRepository serverMetricRepository;
     @Mock DiscordNotificationService discordNotificationService;
-    @Mock ServerHeartbeatService serverHeartbeatService;
 
     private final Clock clock = Clock.fixed(Instant.parse("2026-11-15T00:00:00Z"), ZoneId.systemDefault());
     private MetricService metricService;
@@ -41,7 +40,7 @@ class MetricServiceTest {
     @BeforeEach
     void setUp() {
         metricService = new MetricService(targetServerRepository, serverMetricRepository,
-                discordNotificationService, serverHeartbeatService, clock, new DiagnosticProperties());
+                discordNotificationService, clock, new DiagnosticProperties());
         server = TargetServer.builder()
                 .serverName("test-server")
                 .mcpToken("valid-token")

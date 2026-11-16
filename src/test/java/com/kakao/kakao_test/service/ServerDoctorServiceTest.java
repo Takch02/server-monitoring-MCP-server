@@ -31,7 +31,6 @@ class ServerDoctorServiceTest {
     @Mock ServerMetricRepository metrics;
     @Mock ServerHealthEventRepository healthEvents;
     @Mock DiscordNotificationService notifications;
-    @Mock ServerHeartbeatService heartbeat;
     private final Clock clock = Clock.fixed(Instant.parse("2026-11-15T00:00:00Z"), ZoneId.systemDefault());
     private final TargetServer server = TargetServer.builder().serverName("test").build();
     private ServerDoctorService service;
@@ -39,8 +38,8 @@ class ServerDoctorServiceTest {
     @BeforeEach
     void setUp() {
         DiagnosticProperties properties = new DiagnosticProperties();
-        MetricService metricService = new MetricService(servers, metrics, notifications, heartbeat, clock, properties);
-        HealthService healthService = new HealthService(servers, healthEvents, heartbeat, clock, properties);
+        MetricService metricService = new MetricService(servers, metrics, notifications, clock, properties);
+        HealthService healthService = new HealthService(servers, healthEvents, clock, properties);
         service = new ServerDoctorService(logs, metricService, healthService);
         given(servers.getByServerName("test")).willReturn(server);
     }

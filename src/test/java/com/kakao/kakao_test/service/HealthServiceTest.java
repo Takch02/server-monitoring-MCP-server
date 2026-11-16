@@ -27,14 +27,13 @@ class HealthServiceTest {
 
     @Mock TargetServerRepository targetServerRepository;
     @Mock ServerHealthEventRepository healthEventRepository;
-    @Mock ServerHeartbeatService serverHeartbeatService;
     private final Clock clock = Clock.fixed(Instant.parse("2026-11-15T00:00:00Z"), ZoneId.systemDefault());
     private HealthService healthService;
 
     @BeforeEach
     void setUp() {
         healthService = new HealthService(targetServerRepository, healthEventRepository,
-                serverHeartbeatService, clock, new DiagnosticProperties());
+                clock, new DiagnosticProperties());
     }
 
     // ===== saveHealth =====

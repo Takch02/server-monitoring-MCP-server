@@ -26,7 +26,6 @@ public class MetricService {
     private final TargetServerRepository targetServerRepository;
     private final ServerMetricRepository serverMetricRepository;
     private final DiscordNotificationService discordNotificationService;
-    private final ServerHeartbeatService serverHeartbeatService;
     private final Clock clock;
     private final DiagnosticProperties diagnosticProperties;
 
@@ -42,21 +41,19 @@ public class MetricService {
         TargetServer server = targetServerRepository.getByServerName(serverName);
         verifyToken(server, mcpToken);
 
-        // 2. HeartBeat 갱신 (다른 트렌젝션에서 처리)
-        serverHeartbeatService.updateHeartbeatQuickly(server.getId());
         MetricIngestDto.MetricData data = dto.getData();
 
-        // 3. 단위 변환 및 Entity 생성 (DB에 맞게 변환)
+        // 2. 단위 변환 및 Entity 생성 (DB에 맞게 변환)
         Double cpuPercent = data.getCpuUsage() * 100.0;
         Double memUsedMb = data.getMemoryUsed() / 1024.0 / 1024.0;
         Double memMaxMb = data.getMemoryMax() / 1024.0 / 1024.0;
 
         ServerMetric metric = ServerMetric.createMetric(dto.getTs(), server, cpuPercent, memUsedMb, memMaxMb);
 
-        // 4. DB 저장
+        // 3. DB 저장
         serverMetricRepository.save(metric);
 
-        // 5. 위험 감지 및 알림 (80% 초과 시)
+        // 4. 위험 감지 및 알림 (80% 초과 시)
         // (Memory Percent 계산)
         double memPercent = (memMaxMb > 0) ? (memUsedMb / memMaxMb) * 100.0 : 0.0;
 
