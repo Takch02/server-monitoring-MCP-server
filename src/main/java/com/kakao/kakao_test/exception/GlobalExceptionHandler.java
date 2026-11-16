@@ -61,9 +61,10 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<?> unknown(Exception e) {
+        log.error("서버 요청 처리 중 예기치 않은 오류가 발생했습니다.", e);
         return ResponseEntity.status(500).body(Map.of(
                 "error", "INTERNAL_SERVER_ERROR",
-                "message", e.getMessage()
+                "message", "서버 내부 오류가 발생했습니다."
         ));
     }
 
