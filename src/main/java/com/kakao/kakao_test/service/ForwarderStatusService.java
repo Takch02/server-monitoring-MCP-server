@@ -23,6 +23,7 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class ForwarderStatusService {
+    private static final double NANOS_PER_SECOND = 1_000_000_000.0;
     private static final List<String> STREAM_NAMES = List.of("logs", "log_sender", "metrics", "health");
     private final TargetServerRepository targetServerRepository;
     private final ForwarderStatusRepository statusRepository;
@@ -65,6 +66,8 @@ public class ForwarderStatusService {
             return "Forwarder: UNKNOWN — 상태 보고가 끊겼거나 수신 시각이 유효하지 않습니다.\n마지막 서버 수신: "
                     + latest.getReceivedAt() + "\n앱 장애로 단정할 수 없습니다. Forwarder·호스트·네트워크를 확인하십시오.";
         }
+        // 서로 다른 호스트의 시각 대신 보고 내부의 나이와 서버 수신 후 경과 시간을 합산한다.
+        double elapsedSeconds = age.getSeconds() + age.getNano() / NANOS_PER_SECOND;
         ForwarderStatusIngestDto report = deserialize(latest.getSnapshotJson());
         List<String> problems = new ArrayList<>();
         StringBuilder detail = new StringBuilder();
@@ -80,9 +83,10 @@ public class ForwarderStatusService {
             anyDropped |= stream.droppedItems() > 0;
             double pollLimit = Math.max(properties.getForwarderStaleSeconds(),
                     stream.pollStaleSeconds() == null ? 0 : stream.pollStaleSeconds());
-            boolean stale = stream.lastPollAt() == null || report.updatedAt() - stream.lastPollAt() > pollLimit;
+            boolean stale = stream.lastPollAt() == null
+                    || report.updatedAt() - stream.lastPollAt() + elapsedSeconds > pollLimit;
             boolean recentDrop = stream.lastDropAt() != null
-                    && report.updatedAt() - stream.lastDropAt() <= properties.getForwarderStaleSeconds();
+                    && report.updatedAt() - stream.lastDropAt() + elapsedSeconds <= properties.getForwarderStaleSeconds();
             boolean failed = !"running".equals(stream.state()) || stale || recentDrop
                     || stream.lastCollectionError() != null || stream.lastSendError() != null || stream.workerError() != null;
             if (failed) {

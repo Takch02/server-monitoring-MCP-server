@@ -16,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
@@ -173,6 +174,55 @@ class ForwarderStatusServiceTest {
         stream("health").put("last_poll_at", report.get("updated_at").asDouble() - 213);
         given(statuses.findById(1L)).willReturn(Optional.of(row(clock.instant())));
         assertThat(service.getStatusForMcp("test")).contains("Forwarder: DEGRADED", "루프 활동 지연");
+    }
+
+    @Test
+    void 루프관측나이는_수신후경과시간을_포함하며_서로다른시계를_직접비교하지않는다() throws Exception {
+        report.put("started_at", 900.0);
+        report.put("updated_at", 1000.0);
+        for (String name : new String[]{"logs", "log_sender", "metrics", "health"}) {
+            stream(name).put("last_poll_at", 1000.0);
+            stream(name).put("last_collection_success_at", 1000.0);
+            stream(name).put("last_send_success_at", 1000.0);
+        }
+        stream("metrics").put("last_poll_at", 930.0);
+        given(servers.getByServerName("test")).willReturn(server);
+        given(statuses.findById(1L)).willReturn(Optional.of(row(clock.instant())));
+
+        assertThat(statusAfter(Duration.ZERO)).contains("Forwarder: OK");
+        assertThat(statusAfter(Duration.ofSeconds(5))).contains("Forwarder: OK");
+        assertThat(statusAfter(Duration.ofMillis(5001))).contains("Forwarder: DEGRADED", "루프 활동 지연");
+        assertThat(statusAfter(Duration.ofSeconds(10))).contains("Forwarder: DEGRADED", "루프 활동 지연");
+    }
+
+    @Test
+    void 긴수집주기의_개별한계도_조회시점의_관측나이로_검사한다() throws Exception {
+        stream("health").put("poll_stale_seconds", 212);
+        stream("health").put("last_poll_at", report.get("updated_at").asDouble() - 207);
+        given(servers.getByServerName("test")).willReturn(server);
+        given(statuses.findById(1L)).willReturn(Optional.of(row(clock.instant())));
+
+        assertThat(statusAfter(Duration.ofSeconds(5))).contains("Forwarder: OK");
+        assertThat(statusAfter(Duration.ofMillis(5001))).contains("Forwarder: DEGRADED", "루프 활동 지연");
+    }
+
+    @Test
+    void 최근폐기의_시간창도_수신후경과시간에따라_만료하되_누적이력은_알린다() throws Exception {
+        stream("logs").put("dropped_items", 1);
+        stream("logs").put("last_drop_at", report.get("updated_at").asDouble() - 70);
+        stream("logs").put("last_drop_reason", "queue_full");
+        given(servers.getByServerName("test")).willReturn(server);
+        given(statuses.findById(1L)).willReturn(Optional.of(row(clock.instant())));
+
+        assertThat(statusAfter(Duration.ofSeconds(5))).contains("Forwarder: DEGRADED", "최근 폐기: queue_full");
+        assertThat(statusAfter(Duration.ofMillis(5001)))
+                .contains("Forwarder: OK", "누적 폐기=1", "누락되었을 수")
+                .doesNotContain("최근 폐기:");
+    }
+
+    private String statusAfter(Duration elapsed) {
+        return new ForwarderStatusService(servers, statuses, mapper, Clock.offset(clock, elapsed),
+                new DiagnosticProperties()).getStatusForMcp("test");
     }
 
     private ObjectNode stream(String name) {
