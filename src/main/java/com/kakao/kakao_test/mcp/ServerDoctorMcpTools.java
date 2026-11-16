@@ -4,6 +4,7 @@ import com.kakao.kakao_test.dto.ErrorLogAnalysisDto;
 import com.kakao.kakao_test.dto.RegisterServerRequest;
 import com.kakao.kakao_test.dto.RegisterServerResponse;
 import com.kakao.kakao_test.service.HealthService;
+import com.kakao.kakao_test.service.ForwarderStatusService;
 import com.kakao.kakao_test.service.LogService;
 import com.kakao.kakao_test.service.ServerDoctorService;
 import com.kakao.kakao_test.service.ServerRegisterService;
@@ -27,6 +28,7 @@ public class ServerDoctorMcpTools {
     private final LogService logService;
     private final ServerRegisterService serverRegisterService;
     private final HealthService healthService;
+    private final ForwarderStatusService forwarderStatusService;
 
     /**
      * 데모 서버 테스트용 tool
@@ -64,7 +66,7 @@ public class ServerDoctorMcpTools {
 
     @McpTool(
         name = "diagnose_server",
-        description = "Spring 서버 진단 MCP가 대상 서버의 Health, CPU/JVM 메모리 관측 범위·최신성, 최근 오류 로그를 제공합니다. UNKNOWN은 현재 상태를 확인할 근거가 부족하다는 뜻이며, 오류 로그 부재는 서버 정상을 의미하지 않습니다. "
+        description = "Server Doctor(서버 닥터)가 Forwarder 수집 상태와 대상 서버의 Health, CPU/JVM 메모리 관측 범위·최신성, 최근 오류 로그를 제공합니다. Forwarder의 UNKNOWN·DEGRADED 또는 데이터 폐기는 관측 근거가 불완전하다는 뜻입니다. 앱 장애로 단정하거나 오류 로그 부재만으로 서버 정상을 판단하지 마세요. "
                 + "(EN) Spring Server Diagnostics MCP comprehensively analyzes recent error logs and resource status of the target server.",
         annotations = @McpAnnotations(
                 title = "서버 종합 진단",
@@ -122,6 +124,21 @@ public class ServerDoctorMcpTools {
     ) {
         return withValidatedSinceHours(sinceHours,
                 hours -> logService.fetchRecentLogs(serverName, hours));
+    }
+
+    @McpTool(
+        name = "get_forwarder_status",
+        description = "Server Doctor(서버 닥터)의 Forwarder 최신 상태를 조회합니다. 로그·지표·Health 수집과 전송의 실패 원인, 누적 폐기, 로그 큐 크기를 확인할 때 사용하세요. "
+                + "UNKNOWN은 보고 미수신 또는 중단으로 확인할 수 없다는 뜻이며 앱 장애를 의미하지 않습니다. OK도 활성 수집기의 현재 동작 상태일 뿐 과거 로그 전체 수집을 보장하지 않습니다. "
+                + "(EN) Returns the latest Forwarder collection and delivery status, loss counters and queue size. Missing reports do not prove an application outage.",
+        annotations = @McpAnnotations(
+                title = "Forwarder 수집 상태 조회", readOnlyHint = true,
+                destructiveHint = false, idempotentHint = true, openWorldHint = true
+        )
+    )
+    public String getForwarderStatus(
+            @McpToolParam(description = "대상 서버 이름. 예: demo-server") String serverName) {
+        return forwarderStatusService.getStatusForMcp(serverName);
     }
 
     private String withValidatedSinceHours(Integer sinceHours, IntFunction<String> toolCall) {

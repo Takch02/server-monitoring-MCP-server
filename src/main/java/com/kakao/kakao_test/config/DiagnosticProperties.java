@@ -17,4 +17,6 @@ public class DiagnosticProperties {
     private long staleSeconds = 60;
     @Min(1)
     private int metricWindowMinutes = 10;
+    @Min(1)
+    private long forwarderStaleSeconds = 75;
 }

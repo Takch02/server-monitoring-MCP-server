@@ -2,6 +2,8 @@ package com.kakao.kakao_test.exception;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -22,6 +24,14 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(400).body(Map.of(
                 "error", "INVALID_REQUEST",
                 "message", message
+        ));
+    }
+
+    @ExceptionHandler({MissingRequestHeaderException.class, HttpMessageNotReadableException.class})
+    public ResponseEntity<?> malformedRequest(Exception error) {
+        return ResponseEntity.badRequest().body(Map.of(
+                "error", "INVALID_REQUEST",
+                "message", "요청 헤더 또는 본문 형식을 확인하십시오."
         ));
     }
 

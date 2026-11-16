@@ -15,11 +15,14 @@ public class ServerDoctorService {
     private final LogService logService;
     private final MetricService metricService;
     private final HealthService healthService;
+    private final ForwarderStatusService forwarderStatusService;
 
     /**
      * Claude, PlayMCP 가 이용할 service (AI API 호출 X)
      */
     public String diagnoseForMcp(String serverName, int windowHours) {
+        String forwarderStatus = forwarderStatusService.getStatusForMcp(serverName);
+
         // 1. 데이터 수집
         ErrorLogAnalysisDto logAnalysis = logService.analyzeErrorLogs(serverName, windowHours);
         String healthStatus = healthService.getHealthStatusForDiagnosis(serverName);
@@ -29,6 +32,8 @@ public class ServerDoctorService {
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("### 📊 서버 진단 데이터 (Server: %s, 로그 조회: 최근 %dh)\n\n",
                 serverName, logAnalysis.getWindowHours()));
+
+        sb.append("**수집 신뢰성:**\n").append(forwarderStatus).append("\n\n");
 
         sb.append("**1. 서버 응답 상태:**\n").append(healthStatus).append("\n\n");
 

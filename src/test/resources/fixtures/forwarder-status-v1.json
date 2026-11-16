@@ -1,0 +1,72 @@
+{
+  "updated_at": 1794700800.0,
+  "streams": {
+    "logs": {
+      "enabled": true,
+      "state": "running",
+      "started_at": 1794700800.0,
+      "last_poll_at": 1794700800.0,
+      "last_collection_success_at": 1794700800.0,
+      "last_collection_error": null,
+      "last_send_success_at": 1794700800.0,
+      "last_send_error": null,
+      "failed_attempts": 0,
+      "collection_failures": 0,
+      "collected_items": 2,
+      "sent_items": 2,
+      "dropped_items": 0
+    },
+    "log_sender": {
+      "enabled": true,
+      "state": "running",
+      "started_at": 1794700800.0,
+      "last_poll_at": 1794700800.0,
+      "last_collection_success_at": 1794700800.0,
+      "last_collection_error": null,
+      "last_send_success_at": 1794700800.0,
+      "last_send_error": null,
+      "failed_attempts": 0,
+      "collection_failures": 0,
+      "collected_items": 2,
+      "sent_items": 2,
+      "dropped_items": 0
+    },
+    "metrics": {
+      "enabled": true,
+      "state": "running",
+      "started_at": 1794700800.0,
+      "last_poll_at": 1794700800.0,
+      "last_collection_success_at": 1794700800.0,
+      "last_collection_error": null,
+      "last_send_success_at": 1794700800.0,
+      "last_send_error": null,
+      "failed_attempts": 0,
+      "collection_failures": 0,
+      "collected_items": 2,
+      "sent_items": 2,
+      "dropped_items": 0
+    },
+    "health": {
+      "enabled": true,
+      "state": "running",
+      "started_at": 1794700800.0,
+      "last_poll_at": 1794700800.0,
+      "last_collection_success_at": 1794700800.0,
+      "last_collection_error": null,
+      "last_send_success_at": 1794700800.0,
+      "last_send_error": null,
+      "failed_attempts": 0,
+      "collection_failures": 0,
+      "collected_items": 2,
+      "sent_items": 2,
+      "dropped_items": 0
+    }
+  },
+  "schema_version": 1,
+  "run_id": "11111111-1111-4111-8111-111111111111",
+  "started_at": 1794700700.0,
+  "sequence": 1,
+  "version": "test-v1",
+  "log_queue_size": 0,
+  "log_queue_capacity": 300
+}

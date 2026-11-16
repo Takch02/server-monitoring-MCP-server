@@ -1,6 +1,10 @@
 package com.kakao.kakao_test.controller;
 
 import com.kakao.kakao_test.dto.HealthIngestDto;
+import com.kakao.kakao_test.dto.ForwarderStatusIngestDto;
+import com.kakao.kakao_test.service.ForwarderStatusService;
+import jakarta.validation.Valid;
+import java.util.Map;
 import com.kakao.kakao_test.dto.IngestResultDto;
 import com.kakao.kakao_test.dto.LogEventDto;
 import com.kakao.kakao_test.dto.MetricIngestDto;
@@ -24,6 +28,7 @@ public class IngestController {
     private final MetricService metricService;
     private final LogService logService;
     private final HealthService healthService;
+    private final ForwarderStatusService forwarderStatusService;
 
     // 로그 수신(PUSH): 포워더/사용자 서버가 호출
     @PostMapping("/servers/{name}/ingest/logs")
@@ -57,4 +62,12 @@ public class IngestController {
         healthService.saveHealth(serverName, dto, token);
         return ResponseEntity.ok("ok");
     }
+    @PostMapping("/servers/{serverName}/ingest/forwarder-status")
+    public ResponseEntity<Map<String, Boolean>> ingestForwarderStatus(
+            @PathVariable String serverName,
+            @RequestHeader("X-MCP-TOKEN") String token,
+            @Valid @RequestBody ForwarderStatusIngestDto dto) {
+        return ResponseEntity.ok(Map.of("accepted", forwarderStatusService.ingest(serverName, token, dto)));
+    }
+
 }

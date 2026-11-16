@@ -21,7 +21,6 @@ public class HealthService {
 
     private final TargetServerRepository targetServerRepository;
     private final ServerHealthEventRepository healthEventRepository;
-    private final ServerHeartbeatService serverHeartbeatService;
     private final Clock clock;
     private final DiagnosticProperties diagnosticProperties;
 
@@ -30,9 +29,6 @@ public class HealthService {
         // 1) 서버/토큰 검증
         TargetServer server = targetServerRepository.findByServerName(serverName)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown serverName: " + serverName));
-
-        // 하트비트 갱신 (x-lock 을 얻어야 하므로 다른 트렌젝션으로 빼며 데드락을 회피)
-        serverHeartbeatService.updateHeartbeatQuickly(server.getId());
 
         if (!server.getMcpToken().equals(token)) {
             throw new SecurityException("Invalid token");
@@ -53,7 +49,6 @@ public class HealthService {
                 .message(safeMsg)
                 .build());
 
-        server.updateHealthSnapshot(newStatus, dto.latencyMs(), dto.httpStatus());
         log.info("Server Health Check 완료 (서버 : {})", serverName);
     }
 

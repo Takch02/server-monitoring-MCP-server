@@ -27,7 +27,6 @@ class MetricServiceFreshnessTest {
     @Mock TargetServerRepository servers;
     @Mock ServerMetricRepository metrics;
     @Mock DiscordNotificationService notifications;
-    @Mock ServerHeartbeatService heartbeat;
     private final Clock clock = Clock.fixed(Instant.parse("2026-11-15T00:00:00Z"), ZoneId.systemDefault());
     private final LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneId.systemDefault());
     private final DiagnosticProperties properties = new DiagnosticProperties();
@@ -36,7 +35,7 @@ class MetricServiceFreshnessTest {
 
     @BeforeEach
     void setUp() {
-        service = new MetricService(servers, metrics, notifications, heartbeat, clock, properties);
+        service = new MetricService(servers, metrics, notifications, clock, properties);
         given(servers.getByServerName("test")).willReturn(server);
     }
 
