@@ -27,6 +27,7 @@ import static org.mockito.ArgumentMatchers.*;
 @ExtendWith(MockitoExtension.class)
 class ServerDoctorServiceTest {
     @Mock LogService logs;
+    @Mock ForwarderStatusService forwarderStatus;
     @Mock TargetServerRepository servers;
     @Mock ServerMetricRepository metrics;
     @Mock ServerHealthEventRepository healthEvents;
@@ -40,7 +41,7 @@ class ServerDoctorServiceTest {
         DiagnosticProperties properties = new DiagnosticProperties();
         MetricService metricService = new MetricService(servers, metrics, notifications, clock, properties);
         HealthService healthService = new HealthService(servers, healthEvents, clock, properties);
-        service = new ServerDoctorService(logs, metricService, healthService);
+        service = new ServerDoctorService(logs, metricService, healthService, forwarderStatus);
         given(servers.getByServerName("test")).willReturn(server);
     }
 
@@ -85,6 +86,16 @@ class ServerDoctorServiceTest {
         normalMetrics();
         assertThat(service.diagnoseForMcp("test", 24))
                 .contains("Health: UP", "에러 수: 1건", "NullPointerException").doesNotContain("Healthy");
+    }
+
+    @Test
+    void 수집실패는_정상Health와_정상지표에_가려지지않는다() {
+        given(forwarderStatus.getStatusForMcp("test")).willReturn("Forwarder: DEGRADED — 로그 수집 실패");
+        logs(0);
+        health("UP", 200, 5);
+        normalMetrics();
+        assertThat(service.diagnoseForMcp("test", 24))
+                .contains("Forwarder: DEGRADED", "로그 수집 실패", "Health: UP", "자원 상태: NORMAL", "로그 부재만으로");
     }
 
     private void logs(int count) {

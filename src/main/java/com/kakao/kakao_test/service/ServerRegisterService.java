@@ -134,6 +134,8 @@ public class ServerRegisterService {
             volumes:
               - logs:/logs:ro # target이 쓴 로그를 읽기 전용으로 마운트
             environment:
+              SERVER_NAME: "${SERVER_NAME}"
+              MCP_FORWARDER_STATUS_INGEST_URL: "${MCP_DOMAIN}/api/servers/${SERVER_NAME}/ingest/forwarder-status"
               MCP_LOG_INGEST_URL: "${MCP_DOMAIN}/api/servers/${SERVER_NAME}/ingest/logs"
               MCP_METRIC_INGEST_URL: "${MCP_DOMAIN}/api/servers/${SERVER_NAME}/ingest/metrics"
               MCP_HEALTH_INGEST_URL: "${MCP_DOMAIN}/api/servers/${SERVER_NAME}/ingest/health"

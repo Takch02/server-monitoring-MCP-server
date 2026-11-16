@@ -56,6 +56,7 @@ class HealthServiceTest {
         assertThatThrownBy(() ->
                 healthService.saveHealth("my-server", dto("UP", 200, 0, null), "wrong-token")
         ).isInstanceOf(SecurityException.class);
+        then(healthEventRepository).shouldHaveNoInteractions();
     }
 
     @Test

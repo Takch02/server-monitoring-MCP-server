@@ -2,6 +2,7 @@ package com.kakao.kakao_test.mcp;
 
 import com.kakao.kakao_test.dto.ErrorLogAnalysisDto;
 import com.kakao.kakao_test.service.HealthService;
+import com.kakao.kakao_test.service.ForwarderStatusService;
 import com.kakao.kakao_test.service.LogService;
 import com.kakao.kakao_test.service.ServerDoctorService;
 import com.kakao.kakao_test.service.ServerRegisterService;
@@ -28,13 +29,14 @@ class ServerDoctorMcpToolsTest {
     @Mock LogService logService;
     @Mock ServerRegisterService serverRegisterService;
     @Mock HealthService healthService;
+    @Mock ForwarderStatusService forwarderStatusService;
 
     private ServerDoctorMcpTools mcpTools;
 
     @BeforeEach
     void setUp() {
         mcpTools = new ServerDoctorMcpTools(
-                serverDoctorService, logService, serverRegisterService, healthService
+                serverDoctorService, logService, serverRegisterService, healthService, forwarderStatusService
         );
     }
 
@@ -106,6 +108,13 @@ class ServerDoctorMcpToolsTest {
 
         assertThat(result).isEqualTo("최근 로그");
         then(logService).should().fetchRecentLogs("test-server", 48);
+    }
+
+    @Test
+    void 수집상태조회는_service의_보고중단_결과를_그대로반환한다() {
+        given(forwarderStatusService.getStatusForMcp("test-server")).willReturn("Forwarder: UNKNOWN — 보고 중단");
+        assertThat(mcpTools.getForwarderStatus("test-server")).isEqualTo("Forwarder: UNKNOWN — 보고 중단");
+        then(forwarderStatusService).should().getStatusForMcp("test-server");
     }
 
     private ErrorLogAnalysisDto emptyAnalysis(int windowHours) {
