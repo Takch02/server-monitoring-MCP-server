@@ -99,6 +99,18 @@ class ForwarderStatusIngestTest {
     }
 
     @Test
+    void 누락되거나_지원하지않는본문형식은_415이며_상태를_저장하지않는다() throws Exception {
+        for (String contentType : new String[]{null, "application/octet-stream", "text/plain"}) {
+            var request = post("/api/servers/test/ingest/forwarder-status")
+                    .header("X-MCP-TOKEN", "token").content(mapper.writeValueAsBytes(report));
+            if (contentType != null) request.contentType(contentType);
+            mvc.perform(request).andExpect(status().isUnsupportedMediaType())
+                    .andExpect(jsonPath("$.error").value("UNSUPPORTED_MEDIA_TYPE"));
+        }
+        assertThat(statuses.count()).isZero();
+    }
+
+    @Test
     void 잘못된JSON은_400이며_본문원문을_응답하지않는다() throws Exception {
         mvc.perform(post("/api/servers/test/ingest/forwarder-status").header("X-MCP-TOKEN", "token")
                         .contentType("application/json").content("{ secret-test-value"))

@@ -3,6 +3,7 @@ package com.kakao.kakao_test.exception;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -32,6 +33,14 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(Map.of(
                 "error", "INVALID_REQUEST",
                 "message", "요청 헤더 또는 본문 형식을 확인하십시오."
+        ));
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<?> unsupportedMediaType(HttpMediaTypeNotSupportedException e) {
+        return ResponseEntity.status(415).body(Map.of(
+                "error", "UNSUPPORTED_MEDIA_TYPE",
+                "message", "지원하지 않는 요청 본문 형식입니다."
         ));
     }
 
