@@ -16,6 +16,8 @@ import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -69,9 +71,12 @@ public class LogService {
                 .filter(e -> e.getEventId() != null && !e.getEventId().isBlank())
                 .toList();
 
+        String alertBatch = discordWebhookUrl == null || discordWebhookUrl.isBlank()
+                ? null : UUID.randomUUID().toString();
         String sql = """
-            INSERT IGNORE INTO server_log (event_id, server_id, level, message, created_at, occurred_at)
-            VALUES (?, ?, ?, ?, NOW(), ?)
+            INSERT INTO server_log (event_id, server_id, level, message, created_at, occurred_at, error_group_key, alert_batch)
+            VALUES (?, ?, ?, ?, NOW(), ?, ?, ?)
+            ON DUPLICATE KEY UPDATE event_id = server_log.event_id
             """;
 
         jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
@@ -83,6 +88,9 @@ public class LogService {
                 ps.setString(3, e.getLevel());
                 ps.setString(4, e.getMessage());
                 ps.setObject(5, convertTimestamp(e.getTs()));
+                boolean error = "ERROR".equalsIgnoreCase(e.getLevel());
+                ps.setString(6, error ? ErrorFingerprint.of(e.getMessage()) : null);
+                ps.setString(7, error ? alertBatch : null);
             }
 
             @Override
@@ -94,28 +102,24 @@ public class LogService {
         log.info("{} 서버로부터 로그 {}개 수신됨",
                 serverName, validEvents.size());
 
-        // 4. 에러 감지 및 알림 (단순 텍스트 전송)
-        List<String> errorLogs = events.stream()
-                .filter(e -> "ERROR".equalsIgnoreCase(e.getLevel()))
-                .map(LogEventDto::getMessage)
-                .toList();
-
-        sendDiscordMessage(serverName, discordWebhookUrl, errorLogs);
+        // 재전송 행은 기존 배치 표식을 유지한다. JDBC 배치 반환값에 의존하지 않는다.
+        if (alertBatch != null) {
+            serverLogRepository.findFirstByServerAndAlertBatchOrderById(server, alertBatch)
+                    .ifPresent(row -> notifyAfterCommit(discordWebhookUrl, serverName, row.getMessage()));
+        }
 
         return new IngestResultDto(serverName, events.size(), "로그 수신 완료");
     }
 
-    private void sendDiscordMessage(String serverName, String discordWebhookUrl, List<String> errorLogs) {
-        if (!errorLogs.isEmpty()) {
-            String firstError = errorLogs.getFirst();
-            String shortError = firstError.length() > 200
-                    ? firstError.substring(0, 200) + "..."
-                    : firstError;
-            String alertMsg = createDiscordMessage(shortError);
-
-            // 사용자 토큰으로 디스코드 알림 발송
-            discordNotificationService.sendErrorAlert(discordWebhookUrl, serverName, alertMsg);
-        }
+    private void notifyAfterCommit(String webhook, String serverName, String message) {
+        String text = safe(message);
+        String summary = text.length() > 200 ? text.substring(0, 200) + "..." : text;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                discordNotificationService.sendErrorAlert(webhook, serverName, createDiscordMessage(summary));
+            }
+        });
     }
 
     private String createDiscordMessage(String shortError) {
@@ -278,7 +282,7 @@ public class LogService {
 
     // Timestamp(Long) -> LocalDateTime 변환
     private LocalDateTime convertTimestamp(Long ts) {
-        if (ts == null) return LocalDateTime.now();
+        if (ts == null) return null;
         return LocalDateTime.ofInstant(Instant.ofEpochMilli(ts), ZoneId.systemDefault());
     }
 

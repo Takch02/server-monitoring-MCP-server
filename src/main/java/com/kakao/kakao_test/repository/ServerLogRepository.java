@@ -10,8 +10,26 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface ServerLogRepository extends JpaRepository<ServerLog, Long> {
+    Optional<ServerLog> findFirstByServerAndAlertBatchOrderById(TargetServer server, String alertBatch);
+
+    interface ErrorGroupCount {
+        String getGroupKey();
+        long getOccurrences();
+    }
+
+    @Query("""
+        select l.errorGroupKey as groupKey, count(l) as occurrences
+        from ServerLog l where l.server = :server and l.errorGroupKey is not null
+        and l.createdAt >= :start and l.createdAt < :end
+        group by l.errorGroupKey order by count(l) desc, l.errorGroupKey
+        """)
+    List<ErrorGroupCount> countErrorGroups(@Param("server") TargetServer server,
+                                          @Param("start") LocalDateTime start,
+                                          @Param("end") LocalDateTime end);
+
     // 특정 서버의 최신 로그 100개 가져오기
     List<ServerLog> findTop100ByServerOrderByOccurredAtDesc(TargetServer server);
 

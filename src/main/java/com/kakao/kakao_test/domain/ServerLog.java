@@ -17,10 +17,12 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(name = "server_log",
         uniqueConstraints = {
-            @UniqueConstraint(name = "ux_server_log_eventid", columnNames = "event_id")
+            @UniqueConstraint(name = "ux_log_server_event", columnNames = {"server_id", "event_id"})
         },
         indexes = {
     @Index(name = "idx_log_server_time", columnList = "server_id, occurredAt"), // 시간순 조회용
+    @Index(name = "idx_log_group", columnList = "server_id, error_group_key, occurredAt"),
+    @Index(name = "idx_log_alert_batch", columnList = "alert_batch"),
     @Index(name = "idx_log_level", columnList = "server_id, level, occurredAt") // 에러만 필터링
 })
 public class ServerLog {
@@ -39,6 +41,12 @@ public class ServerLog {
      */
     @Column(name="event_id", length = 40, nullable = false)
     private String eventId;
+
+    @Column(name = "error_group_key", length = 64)
+    private String errorGroupKey;
+
+    @Column(name = "alert_batch", length = 36)
+    private String alertBatch;
 
     private String level; // INFO, WARN, ERROR
 
