@@ -28,7 +28,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.url=jdbc:h2:mem:forwarder-app;MODE=MySQL;DB_CLOSE_DELAY=-1",
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.datasource.username=sa", "spring.datasource.password=",
-        "spring.jpa.hibernate.ddl-auto=create-drop",
+        // H2 MySQL 모드는 TEXT를 VARCHAR로 보고한다. 스키마 생성은 실제 Flyway SQL을 사용한다.
+        "spring.jpa.hibernate.ddl-auto=none",
         "spring.jpa.properties.hibernate.generate_statistics=true",
         "openai.api-key=unused-local-test", "mcp.server-url=http://example.invalid",
         "forwarder.image-url=example.invalid/forwarder:test"

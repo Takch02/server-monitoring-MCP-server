@@ -214,3 +214,15 @@ REDACT_PATTERNS = [
 - 수집 서버는 **UNIQUE 인덱스(O(logN)) + `ON DUPLICATE KEY UPDATE`** 로 중복 검증을 **DB에 위임**해 애플리케이션 Stack Trace 생성 오버헤드 제거.
 
 **Result:** 동일 이벤트 재처리 테스트 기준 **중복 데이터 미발생 검증**
+
+### DB 마이그레이션
+
+서버 기동 시 Flyway가 `src/main/resources/db/migration`의 미적용 SQL을 순서대로 실행한 뒤 Hibernate가 엔티티를 검증한다. 빈 DB는 V1부터 생성된다. 이후 변경은 새 버전의 SQL 파일로 추가한다.
+
+기존 Hibernate 관리 DB의 최초 배포 절차:
+
+1. 연결 대상이 애플리케이션 DB인지 확인한다. 기존 5개 테이블의 컬럼과 키를 V1과 대조하고, `SHOW INDEX FROM server_log`로 `ux_server_log_eventid`가 있는지 확인한다. V2 컬럼·인덱스가 이미 일부 적용됐다면 먼저 실제 상태와 이력을 맞춘다.
+2. 기존 구조가 V1과 일치하면 첫 배포에서만 서버 환경 변수 `SPRING_FLYWAY_BASELINE_ON_MIGRATE=true`를 설정한다. Flyway는 기존 DB를 버전 1로 기록하고 V2를 실행한다. 운영 계정에는 마이그레이션 이력 테이블과 대상 스키마 변경 권한이 필요하다.
+3. `flyway_schema_history`에서 V2 성공을 확인한 뒤 환경 변수를 제거한다. 이후 재기동에서는 적용된 버전을 건너뛴다.
+
+컨테이너 롤백 후에도 적용된 DDL은 유지된다. 이전 이미지의 Hibernate가 이전 고유 인덱스를 다시 만들 수 있으므로 V2 적용 뒤 이전 이미지를 기동했다면 재배포 전에 인덱스를 확인한다. 마이그레이션이 중간에 실패하면 실제 컬럼·인덱스와 실패 이력을 먼저 확인한 뒤 복구한다.
