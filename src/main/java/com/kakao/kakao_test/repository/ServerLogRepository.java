@@ -10,11 +10,8 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 public interface ServerLogRepository extends JpaRepository<ServerLog, Long> {
-    Optional<ServerLog> findFirstByServerAndAlertBatchOrderById(TargetServer server, String alertBatch);
-
     interface ErrorGroupCount {
         String getGroupKey();
         long getOccurrences();

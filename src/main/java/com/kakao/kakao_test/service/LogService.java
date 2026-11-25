@@ -8,6 +8,7 @@ import com.kakao.kakao_test.repository.ServerLogRepository;
 import com.kakao.kakao_test.repository.TargetServerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DeadlockLoserDataAccessException;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
@@ -71,44 +72,64 @@ public class LogService {
                 .filter(e -> e.getEventId() != null && !e.getEventId().isBlank())
                 .toList();
 
-        String alertBatch = discordWebhookUrl == null || discordWebhookUrl.isBlank()
-                ? null : UUID.randomUUID().toString();
-        String sql = """
-            INSERT INTO server_log (event_id, server_id, level, message, created_at, occurred_at, error_group_key, alert_batch)
-            VALUES (?, ?, ?, ?, NOW(), ?, ?, ?)
-            ON DUPLICATE KEY UPDATE event_id = server_log.event_id
+        int batchStart = 0;
+        if (discordWebhookUrl != null && !discordWebhookUrl.isBlank()) {
+            // 대표 오류 한 건만 단건 INSERT로 판별한다. 앞선 행부터 처리해 입력 순서를 보존한다.
+            for (int i = 0; i < validEvents.size(); i++) {
+                LogEventDto candidate = validEvents.get(i);
+                if (!"ERROR".equalsIgnoreCase(candidate.getLevel())) continue;
+                insertBatch(server, validEvents.subList(batchStart, i));
+                batchStart = i + 1;
+                if (insertNewError(server, candidate)) {
+                    notifyAfterCommit(discordWebhookUrl, serverName, candidate.getMessage());
+                    break;
+                }
+            }
+        }
+        insertBatch(server, validEvents.subList(batchStart, validEvents.size()));
+
+        log.info("{} 서버로부터 로그 {}개 수신됨", serverName, validEvents.size());
+        return new IngestResultDto(serverName, events.size(), "로그 수신 완료");
+    }
+
+    private static final String INSERT_LOG = """
+            INSERT INTO server_log (event_id, server_id, level, message, created_at, occurred_at, error_group_key)
+            VALUES (?, ?, ?, ?, NOW(), ?, ?)
             """;
 
-        jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
-            @Override
-            public void setValues(PreparedStatement ps, int i) throws SQLException {
-                LogEventDto e = validEvents.get(i);
-                ps.setString(1, e.getEventId());
-                ps.setLong(2, server.getId());
-                ps.setString(3, e.getLevel());
-                ps.setString(4, e.getMessage());
-                ps.setObject(5, convertTimestamp(e.getTs()));
-                boolean error = "ERROR".equalsIgnoreCase(e.getLevel());
-                ps.setString(6, error ? ErrorFingerprint.of(e.getMessage()) : null);
-                ps.setString(7, error ? alertBatch : null);
-            }
-
-            @Override
-            public int getBatchSize() {
-                return validEvents.size();
-            }
-        });
-
-        log.info("{} 서버로부터 로그 {}개 수신됨",
-                serverName, validEvents.size());
-
-        // 재전송 행은 기존 배치 표식을 유지한다. JDBC 배치 반환값에 의존하지 않는다.
-        if (alertBatch != null) {
-            serverLogRepository.findFirstByServerAndAlertBatchOrderById(server, alertBatch)
-                    .ifPresent(row -> notifyAfterCommit(discordWebhookUrl, serverName, row.getMessage()));
+    private boolean insertNewError(TargetServer server, LogEventDto error) {
+        try {
+            jdbcTemplate.update(INSERT_LOG, ps -> bindLog(ps, server, error));
+            return true;
+        } catch (DuplicateKeyException duplicate) {
+            return false;
         }
+    }
 
-        return new IngestResultDto(serverName, events.size(), "로그 수신 완료");
+    private void insertBatch(TargetServer server, List<LogEventDto> events) {
+        if (events.isEmpty()) return;
+        jdbcTemplate.batchUpdate(INSERT_LOG + " ON DUPLICATE KEY UPDATE event_id = server_log.event_id",
+                new BatchPreparedStatementSetter() {
+                    @Override
+                    public void setValues(PreparedStatement ps, int i) throws SQLException {
+                        bindLog(ps, server, events.get(i));
+                    }
+
+                    @Override
+                    public int getBatchSize() {
+                        return events.size();
+                    }
+                });
+    }
+
+    private void bindLog(PreparedStatement ps, TargetServer server, LogEventDto event) throws SQLException {
+        ps.setString(1, event.getEventId());
+        ps.setLong(2, server.getId());
+        ps.setString(3, event.getLevel());
+        ps.setString(4, event.getMessage());
+        ps.setObject(5, convertTimestamp(event.getTs()));
+        boolean error = "ERROR".equalsIgnoreCase(event.getLevel());
+        ps.setString(6, error ? ErrorFingerprint.of(event.getMessage()) : null);
     }
 
     private void notifyAfterCommit(String webhook, String serverName, String message) {

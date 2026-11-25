@@ -22,7 +22,6 @@ import java.time.LocalDateTime;
         indexes = {
     @Index(name = "idx_log_server_time", columnList = "server_id, occurredAt"), // 시간순 조회용
     @Index(name = "idx_log_group", columnList = "server_id, error_group_key, occurredAt"),
-    @Index(name = "idx_log_alert_batch", columnList = "alert_batch"),
     @Index(name = "idx_log_level", columnList = "server_id, level, occurredAt") // 에러만 필터링
 })
 public class ServerLog {
@@ -44,9 +43,6 @@ public class ServerLog {
 
     @Column(name = "error_group_key", length = 64)
     private String errorGroupKey;
-
-    @Column(name = "alert_batch", length = 36)
-    private String alertBatch;
 
     private String level; // INFO, WARN, ERROR
 

@@ -76,5 +76,17 @@ class ErrorOccurrenceApplicationTest {
                     .contentType("application/json").content(body)).andExpect(status().isOk());
         }
         then(discord).should().sendErrorAlert(anyString(), eq("alert-test"), contains("alert"));
+        String mixed = """
+                [{"eventId":"alert-1","level":"ERROR","message":"alert"},
+                 {"eventId":"info","level":"INFO","message":"ok"},
+                 {"eventId":"new-2","level":"ERROR","message":"second"},
+                 {"eventId":"new-3","level":"ERROR","message":"third"}]
+                """;
+        mvc.perform(post("/api/servers/alert-test/ingest/logs").header("X-MCP-TOKEN", "alert-token")
+                .header("X-DISCORD-WEBHOOK-URL", "https://example.invalid/webhook")
+                .contentType("application/json").content(mixed)).andExpect(status().isOk());
+        then(discord).should().sendErrorAlert(anyString(), eq("alert-test"), contains("second"));
+        then(discord).shouldHaveNoMoreInteractions();
+
     }
 }
