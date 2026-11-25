@@ -34,6 +34,8 @@ Forwarder가 앱을 관측한 결과(로그·지표·Health)와 Forwarder 자체
 서버를 먼저 배포하고, 상태 보고 모듈을 포함한 Forwarder 이미지를 배포한다.
 서버가 생성하는 설치 가이드에도 아래 주소가 포함된다.
 
+설치 가이드의 `MCP_DOMAIN`은 중앙 서버의 `AWS_URL`에서 가져온다. 현재 Oracle 배포 워크플로우는 SSH 대상 호스트와 Docker에 공개한 포트로 `AWS_URL`을 설정한다. 컨테이너를 수동으로 실행할 때는 중앙 서버의 `.env`에서 `AWS_URL`을 Forwarder가 접속하는 외부 주소로 설정한다.
+
 ```yaml
 environment:
   SERVER_NAME: "${SERVER_NAME}"
