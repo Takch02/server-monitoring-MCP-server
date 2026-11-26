@@ -35,7 +35,7 @@ class LogServiceTest {
 
     @Mock TargetServerRepository targetServerRepository;
     @Mock ServerLogRepository serverLogRepository;
-    @Mock DiscordNotificationService discordNotificationService;
+    @Mock LogAlertDestination alertDestination;
     @Mock JdbcTemplate jdbcTemplate;
 
     @InjectMocks LogService logService;
@@ -48,6 +48,7 @@ class LogServiceTest {
                 .serverName("test-server")
                 .mcpToken("valid-token")
                 .build();
+        ReflectionTestUtils.setField(server, "id", 1L);
         given(targetServerRepository.getByServerName("test-server")).willReturn(server);
     }
 
@@ -297,6 +298,16 @@ class LogServiceTest {
 
         assertThat(result.getAcceptedCount()).isEqualTo(1);
         then(jdbcTemplate).should().batchUpdate(anyString(), any(BatchPreparedStatementSetter.class));
+    }
+
+    @Test
+    void 웹훅이_있는_오류_100건도_한번의_배치로_저장한다() {
+        var events = IntStream.range(0, 100).mapToObj(i -> mockEvent("event-" + i, "ERROR", "timeout")).toList();
+        logService.ingestLogs("test-server", "valid-token", "https://example.invalid", events);
+        then(jdbcTemplate).should().batchUpdate(anyString(),
+                argThat((BatchPreparedStatementSetter batch) -> batch.getBatchSize() == 100));
+        then(jdbcTemplate).shouldHaveNoMoreInteractions();
+        then(serverLogRepository).shouldHaveNoInteractions();
     }
 
     // ===== helpers =====

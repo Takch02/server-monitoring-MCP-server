@@ -4,6 +4,11 @@ import com.kakao.kakao_test.domain.TargetServer;
 import com.kakao.kakao_test.repository.ServerLogRepository;
 import com.kakao.kakao_test.repository.TargetServerRepository;
 import com.kakao.kakao_test.service.DiscordNotificationService;
+import com.kakao.kakao_test.service.LogAlertQueue;
+import com.kakao.kakao_test.service.LogAlertWorker;
+import com.kakao.kakao_test.service.LogAlertDestination;
+import org.springframework.jdbc.core.JdbcTemplate;
+import java.time.Clock;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -13,14 +18,19 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Callable;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
+        "alerts.webhook-key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", "alerts.worker-enabled=false",
         "spring.datasource.url=jdbc:h2:mem:error-occurrences;MODE=MySQL;DB_CLOSE_DELAY=-1",
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.datasource.username=sa", "spring.datasource.password=",
@@ -36,6 +46,23 @@ class ErrorOccurrenceApplicationTest {
     @Autowired TargetServerRepository servers;
     @Autowired MockMvc mvc;
     @MockitoBean DiscordNotificationService discord;
+    @MockitoBean Clock clock;
+    @Autowired LogAlertQueue queue;
+    @Autowired LogAlertDestination destination;
+    @Autowired JdbcTemplate jdbc;
+
+    private static final String WEBHOOK = "https://discord.com/api/webhooks/10/test-token";
+
+    private void ingest(String name, String events) throws Exception {
+        mvc.perform(post("/api/servers/" + name + "/ingest/logs").header("X-MCP-TOKEN", name + "-token")
+                .header("X-DISCORD-WEBHOOK-URL", WEBHOOK)
+                .contentType("application/json").content(events)).andExpect(status().isOk());
+    }
+
+    private String error(String id, String exception) {
+        return "{\"eventId\":\"" + id + "\",\"ts\":1000,\"level\":\"ERROR\",\"message\":\"" + exception + "\"}";
+    }
+
 
     @Transactional
     @Test
@@ -65,28 +92,104 @@ class ErrorOccurrenceApplicationTest {
     }
 
     @Test
-    void 재전송된_오류는_커밋후_알림을_다시_발생시키지_않는다() throws Exception {
-        servers.saveAndFlush(TargetServer.builder().serverName("alert-test").mcpToken("alert-token").build());
-        String body = """
-                [{"eventId":"alert-1","level":"ERROR","ts":1000,"message":"alert"}]
-                """;
-        for (int attempt = 0; attempt < 2; attempt++) {
-            mvc.perform(post("/api/servers/alert-test/ingest/logs").header("X-MCP-TOKEN", "alert-token")
-                    .header("X-DISCORD-WEBHOOK-URL", "https://example.invalid/webhook")
-                    .contentType("application/json").content(body)).andExpect(status().isOk());
-        }
-        then(discord).should().sendErrorAlert(anyString(), eq("alert-test"), contains("alert"));
-        String mixed = """
-                [{"eventId":"alert-1","level":"ERROR","message":"alert"},
-                 {"eventId":"info","level":"INFO","message":"ok"},
-                 {"eventId":"new-2","level":"ERROR","message":"second"},
-                 {"eventId":"new-3","level":"ERROR","message":"third"}]
-                """;
-        mvc.perform(post("/api/servers/alert-test/ingest/logs").header("X-MCP-TOKEN", "alert-token")
-                .header("X-DISCORD-WEBHOOK-URL", "https://example.invalid/webhook")
-                .contentType("application/json").content(mixed)).andExpect(status().isOk());
-        then(discord).should().sendErrorAlert(anyString(), eq("alert-test"), contains("second"));
+    void 첫오류_후_5분마다_미발송분을_반복그룹까지_집계한다() throws Exception {
+        var server = servers.saveAndFlush(TargetServer.builder().serverName("interval").mcpToken("interval-token").build());
+        String groupA = "java.net.SocketTimeoutException";
+        String groupB = "java.lang.IllegalStateException";
+        String first = error("first", groupA);
+        ingest("interval", "[" + first + "," + error("second", groupA) + "," + error("third", groupB) + "]");
+        var worker = new LogAlertWorker(queue, destination, discord);
+        given(clock.millis()).willReturn(1_000L);
+        worker.dispatch();
+        then(discord).should().sendLogDelivery(eq(WEBHOOK), contains("총 1건"));
+        ingest("interval", "[" + first + "," + error("fourth", groupA) + "]");
+        given(clock.millis()).willReturn(300_999L);
+        worker.dispatch();
         then(discord).shouldHaveNoMoreInteractions();
-
+        given(clock.millis()).willReturn(301_000L);
+        worker.dispatch();
+        then(discord).should().sendLogDelivery(eq(WEBHOOK), argThat(message ->
+                message.contains("총 3건") && message.contains("SocketTimeoutException")
+                        && message.contains("2건") && message.contains("IllegalStateException")));
+        ingest("interval", "[" + error("repeat", groupA) + "]");
+        given(clock.millis()).willReturn(601_000L);
+        worker.dispatch();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM log_alert_delivery WHERE server_id=? AND sent_at IS NOT NULL",
+                Long.class, server.getId())).isEqualTo(3);
+        assertThat(queue.readyServers()).doesNotContain(server.getId());
     }
+
+    @Test
+    void 한서버의_웹훅실패가_다른서버의_발송을_막지않는다() throws Exception {
+        var one = servers.saveAndFlush(TargetServer.builder().serverName("left").mcpToken("left-token").build());
+        var two = servers.saveAndFlush(TargetServer.builder().serverName("right").mcpToken("right-token").build());
+        String payload = "[" + error("same", "java.lang.IllegalStateException") + "]";
+        ingest("left", payload);
+        ingest("right", payload);
+        var worker = new LogAlertWorker(queue, destination, discord);
+        willThrow(new IllegalStateException("receiver unavailable")).willDoNothing().given(discord)
+                .sendLogDelivery(eq(WEBHOOK), startsWith("[left]"));
+        given(clock.millis()).willReturn(100L);
+        worker.dispatch();
+        assertThat(sentCount(one)).isZero();
+        assertThat(sentCount(two)).isEqualTo(1);
+        assertThat(queue.claim(one.getId())).isNull();
+        given(clock.millis()).willReturn(300_100L);
+        worker.dispatch();
+        assertThat(sentCount(one)).isEqualTo(1);
+        assertThat(sentCount(two)).isEqualTo(1);
+    }
+
+    private long sentCount(TargetServer server) {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM log_alert_delivery WHERE server_id=? AND sent_at IS NOT NULL",
+                Long.class, server.getId());
+    }
+
+    @Test
+    void 발송실패와_워커재시작은_같은_발송건을_재시도한다() throws Exception {
+        var server = servers.saveAndFlush(TargetServer.builder().serverName("retry").mcpToken("retry-token").build());
+        ingest("retry", "[" + error("event", "java.lang.IllegalStateException") + "]");
+        given(clock.millis()).willReturn(1_000L);
+        var first = queue.claim(server.getId());
+        assertThat(first.encryptedWebhook()).doesNotContain(WEBHOOK);
+        assertThat(queue.claim(server.getId())).isNull();
+        given(clock.millis()).willReturn(361_000L);
+        var recovered = queue.claim(server.getId());
+        assertThat(recovered.deliveryId()).isEqualTo(first.deliveryId());
+        queue.complete(first); // 만료된 워커는 새 워커의 상태를 바꿀 수 없다.
+        queue.retry(recovered);
+        assertThat(queue.claim(server.getId())).isNull();
+        given(clock.millis()).willReturn(661_000L);
+        var finalClaim = queue.claim(server.getId());
+        assertThat(finalClaim.deliveryId()).isEqualTo(first.deliveryId());
+        queue.complete(finalClaim);
+        assertThat(queue.readyServers()).doesNotContain(server.getId());
+    }
+
+    @Test
+    void 동일한_오류_배치가_동시에_도착해도_한번만_알림() throws Exception {
+        var server = servers.saveAndFlush(TargetServer.builder().serverName("parallel").mcpToken("test-token").build());
+        var start = new CyclicBarrier(2);
+        Callable<Void> send = () -> {
+            start.await(5, TimeUnit.SECONDS);
+            mvc.perform(post("/api/servers/parallel/ingest/logs").header("X-MCP-TOKEN", "test-token")
+                    .header("X-DISCORD-WEBHOOK-URL", "https://discord.com/api/webhooks/10/test-token")
+                    .contentType("application/json").content("""
+                            [{"eventId":"e1","level":"error","message":"timeout"}]
+                            """)).andExpect(status().isOk());
+            return null;
+        };
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            for (var result : pool.invokeAll(List.of(send, send), 15, TimeUnit.SECONDS)) {
+                result.get();
+            }
+        }
+        assertThat(logs.findTop100ByServerOrderByOccurredAtDesc(server)).hasSize(1);
+        var claim = queue.claim(server.getId());
+        assertThat(claim.message()).contains("총 1건");
+        assertThat(queue.claim(server.getId())).isNull();
+        queue.complete(claim);
+        then(discord).shouldHaveNoMoreInteractions();
+    }
+
 }

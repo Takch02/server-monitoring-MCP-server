@@ -8,7 +8,6 @@ import com.kakao.kakao_test.repository.ServerLogRepository;
 import com.kakao.kakao_test.repository.TargetServerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DeadlockLoserDataAccessException;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
@@ -17,8 +16,6 @@ import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -37,7 +34,7 @@ public class LogService {
 
     private final TargetServerRepository targetServerRepository;
     private final ServerLogRepository serverLogRepository;
-    private final DiscordNotificationService discordNotificationService;
+    private final LogAlertDestination alertDestination;
     private final JdbcTemplate jdbcTemplate;
 
     /**
@@ -49,10 +46,7 @@ public class LogService {
 
 
     /**
-     * 로그 수신(PUSH) 및 저장
-     * 1. 토큰 검증
-     * 2. DB 저장
-     * 3. 에러 감지 시 카카오 알림
+     * Forwarder의 로그를 일괄 저장한다. 워커는 커밋된 신규 ERROR만 읽어 서버별 알림을 보낸다.
      */
     @Retryable(
             value = {CannotAcquireLockException.class, DeadlockLoserDataAccessException.class}, // 데드락 에러 발생 시에만
@@ -72,47 +66,30 @@ public class LogService {
                 .filter(e -> e.getEventId() != null && !e.getEventId().isBlank())
                 .toList();
 
-        int batchStart = 0;
-        if (discordWebhookUrl != null && !discordWebhookUrl.isBlank()) {
-            // 대표 오류 한 건만 단건 INSERT로 판별한다. 앞선 행부터 처리해 입력 순서를 보존한다.
-            for (int i = 0; i < validEvents.size(); i++) {
-                LogEventDto candidate = validEvents.get(i);
-                if (!"ERROR".equalsIgnoreCase(candidate.getLevel())) continue;
-                insertBatch(server, validEvents.subList(batchStart, i));
-                batchStart = i + 1;
-                if (insertNewError(server, candidate)) {
-                    notifyAfterCommit(discordWebhookUrl, serverName, candidate.getMessage());
-                    break;
-                }
-            }
-        }
-        insertBatch(server, validEvents.subList(batchStart, validEvents.size()));
+        // 1) 알림을 보낼 오류가 있을 때만 서버의 웹훅 설정을 확인한다.
+        boolean queueErrors = discordWebhookUrl != null && !discordWebhookUrl.isBlank()
+                && validEvents.stream().anyMatch(event -> "ERROR".equalsIgnoreCase(event.getLevel()));
+        if (queueErrors) alertDestination.remember(server.getId(), discordWebhookUrl);
+
+        // 2) INFO/WARN도 함께 저장한다. 재전송 행은 기존 발송 상태를 그대로 유지한다.
+        insertBatch(server, validEvents, queueErrors);
 
         log.info("{} 서버로부터 로그 {}개 수신됨", serverName, validEvents.size());
         return new IngestResultDto(serverName, events.size(), "로그 수신 완료");
     }
 
     private static final String INSERT_LOG = """
-            INSERT INTO server_log (event_id, server_id, level, message, created_at, occurred_at, error_group_key)
-            VALUES (?, ?, ?, ?, NOW(), ?, ?)
+            INSERT INTO server_log (event_id, server_id, level, message, created_at, occurred_at, error_group_key, alert_delivery)
+            VALUES (?, ?, ?, ?, NOW(), ?, ?, ?)
             """;
 
-    private boolean insertNewError(TargetServer server, LogEventDto error) {
-        try {
-            jdbcTemplate.update(INSERT_LOG, ps -> bindLog(ps, server, error));
-            return true;
-        } catch (DuplicateKeyException duplicate) {
-            return false;
-        }
-    }
-
-    private void insertBatch(TargetServer server, List<LogEventDto> events) {
+    private void insertBatch(TargetServer server, List<LogEventDto> events, boolean queueErrors) {
         if (events.isEmpty()) return;
         jdbcTemplate.batchUpdate(INSERT_LOG + " ON DUPLICATE KEY UPDATE event_id = server_log.event_id",
                 new BatchPreparedStatementSetter() {
                     @Override
                     public void setValues(PreparedStatement ps, int i) throws SQLException {
-                        bindLog(ps, server, events.get(i));
+                        bindLog(ps, server, events.get(i), queueErrors);
                     }
 
                     @Override
@@ -122,7 +99,7 @@ public class LogService {
                 });
     }
 
-    private void bindLog(PreparedStatement ps, TargetServer server, LogEventDto event) throws SQLException {
+    private void bindLog(PreparedStatement ps, TargetServer server, LogEventDto event, boolean queueErrors) throws SQLException {
         ps.setString(1, event.getEventId());
         ps.setLong(2, server.getId());
         ps.setString(3, event.getLevel());
@@ -130,25 +107,7 @@ public class LogService {
         ps.setObject(5, convertTimestamp(event.getTs()));
         boolean error = "ERROR".equalsIgnoreCase(event.getLevel());
         ps.setString(6, error ? ErrorFingerprint.of(event.getMessage()) : null);
-    }
-
-    private void notifyAfterCommit(String webhook, String serverName, String message) {
-        String text = safe(message);
-        String summary = text.length() > 200 ? text.substring(0, 200) + "..." : text;
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                discordNotificationService.sendErrorAlert(webhook, serverName, createDiscordMessage(summary));
-            }
-        });
-    }
-
-    private String createDiscordMessage(String shortError) {
-        return String.format("""
-            📋 **내용 요약:**
-            `%s`
-            """, shortError
-        );
+        ps.setString(7, error && queueErrors ? "PENDING" : null);
     }
 
     /**

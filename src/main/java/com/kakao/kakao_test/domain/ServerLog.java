@@ -44,6 +44,9 @@ public class ServerLog {
     @Column(name = "error_group_key", length = 64)
     private String errorGroupKey;
 
+    @Column(name = "alert_delivery", length = 36)
+    private String alertDelivery;
+
     private String level; // INFO, WARN, ERROR
 
     // 로그 내용은 매우 길 수 있음 (TEXT 타입 사용)

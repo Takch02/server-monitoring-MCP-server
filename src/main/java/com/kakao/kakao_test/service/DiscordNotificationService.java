@@ -7,6 +7,10 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import java.net.http.HttpClient;
+import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -20,6 +24,25 @@ public class DiscordNotificationService {
     private static final long COOLDOWN_MS = 10 * 60 * 1000; // 10분
 
     private final RestClient restClient = RestClient.create();
+
+    private final RestClient logClient = logDeliveryClient();
+
+    private static RestClient logDeliveryClient() {
+        var http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+        var factory = new JdkClientHttpRequestFactory(http);
+        factory.setReadTimeout(Duration.ofSeconds(8));
+        return RestClient.builder().requestFactory(factory).build();
+    }
+
+    // 워커는 2xx 응답 이후에만 발송 성공을 기록한다.
+    public void sendLogDelivery(String url, String message) {
+        var response = logClient.post().uri(url).contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("content", message, "allowed_mentions", Map.of("parse", List.of())))
+                .retrieve().toBodilessEntity();
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            throw new IllegalStateException("Discord HTTP " + response.getStatusCode().value());
+        }
+    }
 
     /**
      * [1] 시스템 에러 알림용 (쿨타임 적용 O)
