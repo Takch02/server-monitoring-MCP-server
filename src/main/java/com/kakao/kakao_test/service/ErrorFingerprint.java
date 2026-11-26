@@ -10,7 +10,9 @@ import java.util.regex.Pattern;
 final class ErrorFingerprint {
     private static final Pattern THROWABLE = Pattern.compile(
             "(?m)^\\h*(?:Caused by:\\h*)?([\\w.$]+(?:Exception|Error))(?=[:\\s]|$)");
-    private static final Pattern FRAME = Pattern.compile("(?m)^\\h*at\\h+([\\w.$<>]+)\\(");
+    // [클래스로더/][모듈@버전]/ 접두부는 제외하고 클래스와 메서드만 캡처한다.
+    private static final Pattern FRAME = Pattern.compile(
+            "(?m)^\\h*at\\h+(?:[^/()\\s]+/(?:[^/()\\s]*/)?)?([\\w.$<>]+)\\(");
     private static final Pattern PREFIX = Pattern.compile("^\\d{4}-\\d{2}-\\d{2}\\S*\\s+.*?\\bERROR\\b\\s*");
     private static final Pattern VARIABLE = Pattern.compile(
             "(?i)\\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\\b|(?<=(?:requestId|route|seq)=)[^\\s,]+|\\b\\d+\\b");

@@ -1,6 +1,8 @@
 package com.kakao.kakao_test.service;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -21,5 +23,16 @@ class ErrorFingerprintTest {
         assertThat(ErrorFingerprint.of(trace)).isEqualTo(ErrorFingerprint.of(trace.replace(":42", ":70")))
                 .isNotEqualTo(ErrorFingerprint.of(trace.replace("simulateApiTimeout", "refreshCache")))
                 .isNotEqualTo(ErrorFingerprint.of(trace.replace("SocketTimeoutException", "IllegalArgumentException")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"acme/", "acme@2.1/", "loader/acme@2.1/", "loader//"})
+    void 모듈과_클래스로더_표기가_달라도_같은_메서드는_같은_그룹(String prefix) {
+        String header = "java.lang.IllegalStateException: failed\n\tat ";
+        String frame = "org.acme.Lib.alpha(Lib.java:10)";
+        String trace = header + prefix + frame;
+
+        assertThat(ErrorFingerprint.of(trace)).isEqualTo(ErrorFingerprint.of(header + frame))
+                .isNotEqualTo(ErrorFingerprint.of(trace.replace(".alpha(", ".beta(")));
     }
 }
