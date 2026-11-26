@@ -5,6 +5,7 @@ import com.kakao.kakao_test.domain.TargetServer;
 import com.kakao.kakao_test.dto.ErrorLogAnalysisDto;
 import com.kakao.kakao_test.dto.IngestResultDto;
 import com.kakao.kakao_test.dto.LogEventDto;
+import com.kakao.kakao_test.exception.InvalidRequestException;
 import com.kakao.kakao_test.exception.UnauthorizedException;
 import com.kakao.kakao_test.repository.ServerLogRepository;
 import com.kakao.kakao_test.repository.TargetServerRepository;
@@ -284,6 +285,19 @@ class LogServiceTest {
         assertThatThrownBy(() ->
                 logService.ingestLogs("test-server", "wrong-token", null, List.of(event))
         ).isInstanceOf(UnauthorizedException.class);
+    }
+
+    @Test
+    void ingest_발생시각이_누락되면_로그와_알림_목적지를_저장하지_않는다() {
+        LogEventDto missingTimestamp = mockEvent("evt1", "ERROR", "timeout");
+        ReflectionTestUtils.setField(missingTimestamp, "ts", null);
+
+        assertThatThrownBy(() -> logService.ingestLogs(
+                "test-server", "valid-token", "https://example.invalid", List.of(missingTimestamp)))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessageContaining("ts");
+        then(jdbcTemplate).shouldHaveNoInteractions();
+        then(alertDestination).shouldHaveNoInteractions();
     }
 
     @Test

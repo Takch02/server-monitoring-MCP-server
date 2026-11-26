@@ -3,6 +3,7 @@ package com.kakao.kakao_test.service;
 import com.kakao.kakao_test.domain.ServerLog;
 import com.kakao.kakao_test.domain.TargetServer;
 import com.kakao.kakao_test.dto.*;
+import com.kakao.kakao_test.exception.InvalidRequestException;
 import com.kakao.kakao_test.exception.UnauthorizedException;
 import com.kakao.kakao_test.repository.ServerLogRepository;
 import com.kakao.kakao_test.repository.TargetServerRepository;
@@ -60,6 +61,10 @@ public class LogService {
 
         if (events == null || events.isEmpty()) {
             return new IngestResultDto(serverName, 0, "수신할 로그가 없습니다.");
+        }
+
+        if (events.stream().anyMatch(event -> event == null || event.getTs() == null)) {
+            throw new InvalidRequestException("모든 로그에 발생 시각(ts)이 필요합니다.");
         }
 
         List<LogEventDto> validEvents = events.stream()
@@ -260,9 +265,8 @@ public class LogService {
 
     // --- 유틸리티 메서드 ---
 
-    // Timestamp(Long) -> LocalDateTime 변환
-    private LocalDateTime convertTimestamp(Long ts) {
-        if (ts == null) return null;
+    // epoch 밀리초를 로그 발생 시각으로 변환한다.
+    private LocalDateTime convertTimestamp(long ts) {
         return LocalDateTime.ofInstant(Instant.ofEpochMilli(ts), ZoneId.systemDefault());
     }
 

@@ -27,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
@@ -89,6 +90,29 @@ class ErrorOccurrenceApplicationTest {
                         assertThat(row.getMessage()).isNotBlank();
                     });
         }
+    }
+
+    @Test
+    void 발생시각이_없거나_null인_로그를_포함한_배치는_400을_반환한다() throws Exception {
+        var server = servers.saveAndFlush(TargetServer.builder()
+                .serverName("missing-ts").mcpToken("missing-ts-token").build());
+        String valid = error("valid", "java.lang.IllegalStateException");
+        for (String invalid : List.of(
+                """
+                {"eventId":"missing","level":"ERROR","message":"timeout"}
+                """,
+                """
+                {"eventId":"null-ts","ts":null,"level":"ERROR","message":"timeout"}
+                """)) {
+            mvc.perform(post("/api/servers/missing-ts/ingest/logs")
+                            .header("X-MCP-TOKEN", "missing-ts-token")
+                            .header("X-DISCORD-WEBHOOK-URL", WEBHOOK)
+                            .contentType("application/json").content("[" + valid + "," + invalid + "]"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                    .andExpect(jsonPath("$.message").value("모든 로그에 발생 시각(ts)이 필요합니다."));
+        }
+        assertThat(logs.findTop100ByServerOrderByOccurredAtDesc(server)).isEmpty();
     }
 
     @Test
@@ -175,7 +199,7 @@ class ErrorOccurrenceApplicationTest {
             mvc.perform(post("/api/servers/parallel/ingest/logs").header("X-MCP-TOKEN", "test-token")
                     .header("X-DISCORD-WEBHOOK-URL", "https://discord.com/api/webhooks/10/test-token")
                     .contentType("application/json").content("""
-                            [{"eventId":"e1","level":"error","message":"timeout"}]
+                            [{"eventId":"e1","ts":1000,"level":"error","message":"timeout"}]
                             """)).andExpect(status().isOk());
             return null;
         };
