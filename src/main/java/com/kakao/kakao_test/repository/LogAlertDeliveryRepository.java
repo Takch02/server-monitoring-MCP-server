@@ -7,6 +7,6 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface LogAlertDeliveryRepository extends JpaRepository<LogAlertDelivery, String> {
     @Modifying
-    @Query("update LogAlertDelivery d set d.sentAt=:now where d.id=:delivery")
+    @Query("update LogAlertDelivery d set d.sentAt=:now, d.updatedAt=local datetime where d.id=:delivery")
     void markSent(String delivery, long now);
 }

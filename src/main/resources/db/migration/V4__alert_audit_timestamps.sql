@@ -1,0 +1,5 @@
+-- V3에서 생성된 행은 감사 시각을 알 수 없어 이번 마이그레이션 시각으로 채운다.
+ALTER TABLE log_alert_channel ADD COLUMN created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6);
+ALTER TABLE log_alert_channel ADD COLUMN updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6);
+ALTER TABLE log_alert_delivery ADD COLUMN created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6);
+ALTER TABLE log_alert_delivery ADD COLUMN updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6);

@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(name = "log_alert_delivery")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class LogAlertDelivery {
+public class LogAlertDelivery extends BaseTimeEntity {
     @Id
     @Column(length = 36)
     private String id;

@@ -116,6 +116,56 @@ class ErrorOccurrenceApplicationTest {
     }
 
     @Test
+    void 알림_감사_시각은_목적지_변경과_선점_재시도_발송에_기록된다() throws Exception {
+        var server = servers.saveAndFlush(TargetServer.builder().serverName("audit").mcpToken("audit-token").build());
+        ingest("audit", "[" + error("audit-event", "java.lang.IllegalStateException") + "]");
+        LocalDateTime channelCreated = jdbc.queryForObject(
+                "SELECT created_at FROM log_alert_channel WHERE server_id=?", LocalDateTime.class, server.getId());
+        assertThat(channelCreated).isNotNull();
+        assertThat(jdbc.queryForObject("SELECT updated_at FROM log_alert_channel WHERE server_id=?",
+                LocalDateTime.class, server.getId())).isNotNull();
+
+        LocalDateTime old = LocalDateTime.of(2000, 1, 1, 0, 0);
+        jdbc.update("UPDATE log_alert_channel SET updated_at=? WHERE server_id=?", old, server.getId());
+        mvc.perform(post("/api/servers/audit/ingest/logs").header("X-MCP-TOKEN", "audit-token")
+                        .header("X-DISCORD-WEBHOOK-URL", WEBHOOK + "-changed")
+                        .contentType("application/json").content("[" + error("audit-event", "java.lang.IllegalStateException") + "]"))
+                .andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT updated_at FROM log_alert_channel WHERE server_id=?",
+                LocalDateTime.class, server.getId())).isAfter(old);
+
+        jdbc.update("UPDATE log_alert_channel SET updated_at=? WHERE server_id=?", old, server.getId());
+        given(clock.millis()).willReturn(1000L);
+        var claim = queue.claim(server.getId());
+        assertThat(jdbc.queryForObject("SELECT updated_at FROM log_alert_channel WHERE server_id=?",
+                LocalDateTime.class, server.getId())).isAfter(old);
+        LocalDateTime deliveryCreated = jdbc.queryForObject(
+                "SELECT created_at FROM log_alert_delivery WHERE id=?", LocalDateTime.class, claim.deliveryId());
+        assertThat(deliveryCreated).isNotNull();
+        assertThat(jdbc.queryForObject("SELECT updated_at FROM log_alert_delivery WHERE id=?",
+                LocalDateTime.class, claim.deliveryId())).isNotNull();
+
+        jdbc.update("UPDATE log_alert_channel SET updated_at=? WHERE server_id=?", old, server.getId());
+        queue.retry(claim);
+        assertThat(jdbc.queryForObject("SELECT updated_at FROM log_alert_channel WHERE server_id=?",
+                LocalDateTime.class, server.getId())).isAfter(old);
+
+        given(clock.millis()).willReturn(301_000L);
+        var retry = queue.claim(server.getId());
+        jdbc.update("UPDATE log_alert_channel SET updated_at=? WHERE server_id=?", old, server.getId());
+        jdbc.update("UPDATE log_alert_delivery SET updated_at=? WHERE id=?", old, retry.deliveryId());
+        queue.complete(retry);
+        assertThat(jdbc.queryForObject("SELECT updated_at FROM log_alert_channel WHERE server_id=?",
+                LocalDateTime.class, server.getId())).isAfter(old);
+        assertThat(jdbc.queryForObject("SELECT updated_at FROM log_alert_delivery WHERE id=?",
+                LocalDateTime.class, retry.deliveryId())).isAfter(old);
+        assertThat(jdbc.queryForObject("SELECT created_at FROM log_alert_channel WHERE server_id=?",
+                LocalDateTime.class, server.getId())).isEqualTo(channelCreated);
+        assertThat(jdbc.queryForObject("SELECT created_at FROM log_alert_delivery WHERE id=?",
+                LocalDateTime.class, retry.deliveryId())).isEqualTo(deliveryCreated);
+    }
+
+    @Test
     void 첫오류_후_5분마다_미발송분을_반복그룹까지_집계한다() throws Exception {
         var server = servers.saveAndFlush(TargetServer.builder().serverName("interval").mcpToken("interval-token").build());
         String groupA = "java.net.SocketTimeoutException";

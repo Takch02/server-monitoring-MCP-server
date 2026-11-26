@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 @Table(name = "log_alert_channel")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class LogAlertChannel {
+public class LogAlertChannel extends BaseTimeEntity {
     @Id
     @Column(name = "server_id")
     private Long serverId;
