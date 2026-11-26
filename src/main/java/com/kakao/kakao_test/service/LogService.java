@@ -3,6 +3,7 @@ package com.kakao.kakao_test.service;
 import com.kakao.kakao_test.domain.ServerLog;
 import com.kakao.kakao_test.domain.TargetServer;
 import com.kakao.kakao_test.dto.*;
+import com.kakao.kakao_test.exception.InvalidRequestException;
 import com.kakao.kakao_test.exception.UnauthorizedException;
 import com.kakao.kakao_test.repository.ServerLogRepository;
 import com.kakao.kakao_test.repository.TargetServerRepository;
@@ -34,7 +35,7 @@ public class LogService {
 
     private final TargetServerRepository targetServerRepository;
     private final ServerLogRepository serverLogRepository;
-    private final DiscordNotificationService discordNotificationService;
+    private final LogAlertDestination alertDestination;
     private final JdbcTemplate jdbcTemplate;
 
     /**
@@ -46,10 +47,7 @@ public class LogService {
 
 
     /**
-     * 로그 수신(PUSH) 및 저장
-     * 1. 토큰 검증
-     * 2. DB 저장
-     * 3. 에러 감지 시 카카오 알림
+     * Forwarder의 로그를 일괄 저장한다. 워커는 커밋된 신규 ERROR만 읽어 서버별 알림을 보낸다.
      */
     @Retryable(
             value = {CannotAcquireLockException.class, DeadlockLoserDataAccessException.class}, // 데드락 에러 발생 시에만
@@ -65,65 +63,56 @@ public class LogService {
             return new IngestResultDto(serverName, 0, "수신할 로그가 없습니다.");
         }
 
+        if (events.stream().anyMatch(event -> event == null || event.getTs() == null)) {
+            throw new InvalidRequestException("모든 로그에 발생 시각(ts)이 필요합니다.");
+        }
+
         List<LogEventDto> validEvents = events.stream()
                 .filter(e -> e.getEventId() != null && !e.getEventId().isBlank())
                 .toList();
 
-        String sql = """
-            INSERT IGNORE INTO server_log (event_id, server_id, level, message, created_at, occurred_at)
-            VALUES (?, ?, ?, ?, NOW(), ?)
-            """;
+        // 1) 알림을 보낼 오류가 있을 때만 서버의 웹훅 설정을 확인한다.
+        boolean queueErrors = discordWebhookUrl != null && !discordWebhookUrl.isBlank()
+                && validEvents.stream().anyMatch(event -> "ERROR".equalsIgnoreCase(event.getLevel()));
+        if (queueErrors) alertDestination.remember(server.getId(), discordWebhookUrl);
 
-        jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
-            @Override
-            public void setValues(PreparedStatement ps, int i) throws SQLException {
-                LogEventDto e = validEvents.get(i);
-                ps.setString(1, e.getEventId());
-                ps.setLong(2, server.getId());
-                ps.setString(3, e.getLevel());
-                ps.setString(4, e.getMessage());
-                ps.setObject(5, convertTimestamp(e.getTs()));
-            }
+        // 2) INFO/WARN도 함께 저장한다. 재전송 행은 기존 발송 상태를 그대로 유지한다.
+        insertBatch(server, validEvents, queueErrors);
 
-            @Override
-            public int getBatchSize() {
-                return validEvents.size();
-            }
-        });
-
-        log.info("{} 서버로부터 로그 {}개 수신됨",
-                serverName, validEvents.size());
-
-        // 4. 에러 감지 및 알림 (단순 텍스트 전송)
-        List<String> errorLogs = events.stream()
-                .filter(e -> "ERROR".equalsIgnoreCase(e.getLevel()))
-                .map(LogEventDto::getMessage)
-                .toList();
-
-        sendDiscordMessage(serverName, discordWebhookUrl, errorLogs);
-
+        log.info("{} 서버로부터 로그 {}개 수신됨", serverName, validEvents.size());
         return new IngestResultDto(serverName, events.size(), "로그 수신 완료");
     }
 
-    private void sendDiscordMessage(String serverName, String discordWebhookUrl, List<String> errorLogs) {
-        if (!errorLogs.isEmpty()) {
-            String firstError = errorLogs.getFirst();
-            String shortError = firstError.length() > 200
-                    ? firstError.substring(0, 200) + "..."
-                    : firstError;
-            String alertMsg = createDiscordMessage(shortError);
+    private static final String INSERT_LOG = """
+            INSERT INTO server_log (event_id, server_id, level, message, created_at, occurred_at, error_group_key, alert_delivery)
+            VALUES (?, ?, ?, ?, NOW(), ?, ?, ?)
+            """;
 
-            // 사용자 토큰으로 디스코드 알림 발송
-            discordNotificationService.sendErrorAlert(discordWebhookUrl, serverName, alertMsg);
-        }
+    private void insertBatch(TargetServer server, List<LogEventDto> events, boolean queueErrors) {
+        if (events.isEmpty()) return;
+        jdbcTemplate.batchUpdate(INSERT_LOG + " ON DUPLICATE KEY UPDATE event_id = server_log.event_id",
+                new BatchPreparedStatementSetter() {
+                    @Override
+                    public void setValues(PreparedStatement ps, int i) throws SQLException {
+                        bindLog(ps, server, events.get(i), queueErrors);
+                    }
+
+                    @Override
+                    public int getBatchSize() {
+                        return events.size();
+                    }
+                });
     }
 
-    private String createDiscordMessage(String shortError) {
-        return String.format("""
-            📋 **내용 요약:**
-            `%s`
-            """, shortError
-        );
+    private void bindLog(PreparedStatement ps, TargetServer server, LogEventDto event, boolean queueErrors) throws SQLException {
+        ps.setString(1, event.getEventId());
+        ps.setLong(2, server.getId());
+        ps.setString(3, event.getLevel());
+        ps.setString(4, event.getMessage());
+        ps.setObject(5, convertTimestamp(event.getTs()));
+        boolean error = "ERROR".equalsIgnoreCase(event.getLevel());
+        ps.setString(6, error ? ErrorFingerprint.of(event.getMessage()) : null);
+        ps.setString(7, error && queueErrors ? "PENDING" : null);
     }
 
     /**
@@ -276,9 +265,8 @@ public class LogService {
 
     // --- 유틸리티 메서드 ---
 
-    // Timestamp(Long) -> LocalDateTime 변환
-    private LocalDateTime convertTimestamp(Long ts) {
-        if (ts == null) return LocalDateTime.now();
+    // epoch 밀리초를 로그 발생 시각으로 변환한다.
+    private LocalDateTime convertTimestamp(long ts) {
         return LocalDateTime.ofInstant(Instant.ofEpochMilli(ts), ZoneId.systemDefault());
     }
 

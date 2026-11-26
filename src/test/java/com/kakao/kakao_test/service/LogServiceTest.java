@@ -5,6 +5,7 @@ import com.kakao.kakao_test.domain.TargetServer;
 import com.kakao.kakao_test.dto.ErrorLogAnalysisDto;
 import com.kakao.kakao_test.dto.IngestResultDto;
 import com.kakao.kakao_test.dto.LogEventDto;
+import com.kakao.kakao_test.exception.InvalidRequestException;
 import com.kakao.kakao_test.exception.UnauthorizedException;
 import com.kakao.kakao_test.repository.ServerLogRepository;
 import com.kakao.kakao_test.repository.TargetServerRepository;
@@ -35,7 +36,7 @@ class LogServiceTest {
 
     @Mock TargetServerRepository targetServerRepository;
     @Mock ServerLogRepository serverLogRepository;
-    @Mock DiscordNotificationService discordNotificationService;
+    @Mock LogAlertDestination alertDestination;
     @Mock JdbcTemplate jdbcTemplate;
 
     @InjectMocks LogService logService;
@@ -48,6 +49,7 @@ class LogServiceTest {
                 .serverName("test-server")
                 .mcpToken("valid-token")
                 .build();
+        ReflectionTestUtils.setField(server, "id", 1L);
         given(targetServerRepository.getByServerName("test-server")).willReturn(server);
     }
 
@@ -286,6 +288,19 @@ class LogServiceTest {
     }
 
     @Test
+    void ingest_발생시각이_누락되면_로그와_알림_목적지를_저장하지_않는다() {
+        LogEventDto missingTimestamp = mockEvent("evt1", "ERROR", "timeout");
+        ReflectionTestUtils.setField(missingTimestamp, "ts", null);
+
+        assertThatThrownBy(() -> logService.ingestLogs(
+                "test-server", "valid-token", "https://example.invalid", List.of(missingTimestamp)))
+                .isInstanceOf(InvalidRequestException.class)
+                .hasMessageContaining("ts");
+        then(jdbcTemplate).shouldHaveNoInteractions();
+        then(alertDestination).shouldHaveNoInteractions();
+    }
+
+    @Test
     void ingest_정상저장_batchUpdate호출() {
         given(jdbcTemplate.batchUpdate(anyString(), any(BatchPreparedStatementSetter.class)))
                 .willReturn(new int[]{1});
@@ -297,6 +312,16 @@ class LogServiceTest {
 
         assertThat(result.getAcceptedCount()).isEqualTo(1);
         then(jdbcTemplate).should().batchUpdate(anyString(), any(BatchPreparedStatementSetter.class));
+    }
+
+    @Test
+    void 웹훅이_있는_오류_100건도_한번의_배치로_저장한다() {
+        var events = IntStream.range(0, 100).mapToObj(i -> mockEvent("event-" + i, "ERROR", "timeout")).toList();
+        logService.ingestLogs("test-server", "valid-token", "https://example.invalid", events);
+        then(jdbcTemplate).should().batchUpdate(anyString(),
+                argThat((BatchPreparedStatementSetter batch) -> batch.getBatchSize() == 100));
+        then(jdbcTemplate).shouldHaveNoMoreInteractions();
+        then(serverLogRepository).shouldHaveNoInteractions();
     }
 
     // ===== helpers =====

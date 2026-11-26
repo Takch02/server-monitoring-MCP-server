@@ -22,7 +22,16 @@ public class GlobalExceptionHandler {
         String message = e.getBindingResult().getFieldErrors().stream()
                 .map(err -> err.getField() + ": " + err.getDefaultMessage())
                 .collect(Collectors.joining(", "));
-        return ResponseEntity.status(400).body(Map.of(
+        return invalidRequestResponse(message);
+    }
+
+    @ExceptionHandler(InvalidRequestException.class)
+    public ResponseEntity<?> invalidRequest(InvalidRequestException e) {
+        return invalidRequestResponse(e.getMessage());
+    }
+
+    private ResponseEntity<Map<String, String>> invalidRequestResponse(String message) {
+        return ResponseEntity.badRequest().body(Map.of(
                 "error", "INVALID_REQUEST",
                 "message", message
         ));

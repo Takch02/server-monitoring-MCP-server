@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class LogEventDto {
     private String eventId;
-    private long ts;        // epoch millis
+    private Long ts;        // epoch millis
     private String level;   // INFO/WARN/ERROR
     private String message; // 한 줄 메시지(마스킹된 형태 권장)
 }

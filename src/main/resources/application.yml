@@ -9,7 +9,7 @@ spring:
 
     jpa:
       hibernate:
-        ddl-auto: update
+        ddl-auto: validate
       show-sql: false
 
     datasource:
@@ -77,3 +77,6 @@ mcp:
       register_server:
         permits-per-minute: 5
         burst-capacity: 1
+
+alerts:
+  webhook-key: ${ALERT_WEBHOOK_KEY}

@@ -12,6 +12,52 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public interface ServerLogRepository extends JpaRepository<ServerLog, Long> {
+    @Modifying
+    @Query(value = """
+            UPDATE server_log SET alert_delivery=:delivery WHERE server_id=:serverId AND alert_delivery='PENDING'
+            ORDER BY id LIMIT 1
+            """, nativeQuery = true)
+    int assignFirstPending(String delivery, long serverId);
+
+    @Modifying
+    @Query("""
+            update ServerLog l set l.alertDelivery=:delivery
+            where l.server.id=:serverId and l.alertDelivery='PENDING'
+            """)
+    int assignAllPending(String delivery, long serverId);
+
+    interface AlertGroup {
+        String getGroupKey();
+        String getSample();
+        long getOccurrences();
+    }
+
+    // 그룹별 최초 행을 조인해 LONGTEXT 원문에서 앞 2000자만 읽는다.
+    @Query(value = """
+            SELECT g.group_key AS groupKey, LEFT(r.message, 2000) AS sample, g.n AS occurrences FROM (
+                SELECT error_group_key AS group_key, MIN(id) AS sample_id, COUNT(*) AS n FROM server_log
+                WHERE server_id=:serverId AND alert_delivery=:delivery GROUP BY error_group_key
+            ) g JOIN server_log r ON r.id=g.sample_id ORDER BY g.n DESC, g.group_key
+            """, nativeQuery = true)
+    List<AlertGroup> topAlertGroups(long serverId, String delivery, Pageable limit);
+
+    long countByServer_IdAndAlertDelivery(long serverId, String alertDelivery);
+
+    interface ErrorGroupCount {
+        String getGroupKey();
+        long getOccurrences();
+    }
+
+    @Query("""
+        select l.errorGroupKey as groupKey, count(l) as occurrences
+        from ServerLog l where l.server = :server and l.errorGroupKey is not null
+        and l.createdAt >= :start and l.createdAt < :end
+        group by l.errorGroupKey order by count(l) desc, l.errorGroupKey
+        """)
+    List<ErrorGroupCount> countErrorGroups(@Param("server") TargetServer server,
+                                          @Param("start") LocalDateTime start,
+                                          @Param("end") LocalDateTime end);
+
     // 특정 서버의 최신 로그 100개 가져오기
     List<ServerLog> findTop100ByServerOrderByOccurredAtDesc(TargetServer server);
 
