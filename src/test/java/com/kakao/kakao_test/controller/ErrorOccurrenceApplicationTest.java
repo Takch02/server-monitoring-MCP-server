@@ -8,7 +8,10 @@ import com.kakao.kakao_test.service.LogAlertQueue;
 import com.kakao.kakao_test.service.LogAlertWorker;
 import com.kakao.kakao_test.service.LogAlertDestination;
 import org.springframework.jdbc.core.JdbcTemplate;
+import java.net.URI;
 import java.time.Clock;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -26,12 +29,16 @@ import java.util.concurrent.Callable;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
         "alerts.webhook-key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", "alerts.worker-enabled=false",
+        "incidents.public-url=https://server-doctor.example",
+        "incidents.link-key=" + ErrorOccurrenceApplicationTest.INCIDENT_KEY,
         "spring.datasource.url=jdbc:h2:mem:error-occurrences;MODE=MySQL;DB_CLOSE_DELAY=-1",
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.datasource.username=sa", "spring.datasource.password=",
@@ -52,6 +59,7 @@ class ErrorOccurrenceApplicationTest {
     @Autowired LogAlertDestination destination;
     @Autowired JdbcTemplate jdbc;
 
+    static final String INCIDENT_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=";
     private static final String WEBHOOK = "https://discord.com/api/webhooks/10/test-token";
 
     private void ingest(String name, String events) throws Exception {
@@ -163,6 +171,71 @@ class ErrorOccurrenceApplicationTest {
                 LocalDateTime.class, server.getId())).isEqualTo(channelCreated);
         assertThat(jdbc.queryForObject("SELECT created_at FROM log_alert_delivery WHERE id=?",
                 LocalDateTime.class, retry.deliveryId())).isEqualTo(deliveryCreated);
+    }
+
+    @Test
+    void 첫알림_링크는_같은서버의_동일그룹만_24시간_보여준다() throws Exception {
+        var server = servers.saveAndFlush(TargetServer.builder().serverName("incident").mcpToken("incident-token").build());
+        servers.saveAndFlush(TargetServer.builder().serverName("incident-other").mcpToken("incident-other-token").build());
+        String detail = "java.lang.IllegalStateException: password=private-value";
+        String repeated = IntStream.range(0, 7).mapToObj(index -> error("snapshot-" + index, detail))
+                .collect(Collectors.joining(","));
+        ingest("incident-other", "[" + error("other", detail) + "]");
+        ingest("incident", "[" + repeated + "," + error("different", "java.lang.NullPointerException") + "]");
+        given(clock.millis()).willReturn(1_000L);
+        var first = queue.claim(server.getId());
+        assertThat(first.message()).contains("총 1건", "[자세히 보기]");
+        String link = first.message().substring(first.message().lastIndexOf("](") + 2, first.message().length() - 1);
+        URI uri = URI.create(link);
+        assertThat(uri.getHost()).isEqualTo("server-doctor.example");
+        String path = "/api" + uri.getPath();
+        String authorization = "Bearer " + uri.getFragment().substring("token=".length());
+
+        mvc.perform(get(path).header("X-Incident-Edge", INCIDENT_KEY).header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "private, no-store"))
+                .andExpect(header().string("Referrer-Policy", "no-referrer"))
+                .andExpect(jsonPath("$.occurrenceCount").value(7))
+                .andExpect(jsonPath("$.representative.message").value("java.lang.IllegalStateException: password=[REDACTED]"))
+                .andExpect(jsonPath("$.occurrences.length()").value(5))
+                .andExpect(jsonPath("$.nextPage").value(1));
+
+        // 같은 수신 시각으로 늦게 저장된 행도 이미 발급한 링크의 결과를 바꾸지 않는다.
+        ingest("incident", "[" + error("late", detail) + "]");
+        jdbc.update("UPDATE server_log SET created_at=(SELECT window_end FROM incident WHERE id=?) WHERE event_id='late'",
+                first.deliveryId());
+        mvc.perform(get(path).param("page", "1").header("X-Incident-Edge", INCIDENT_KEY)
+                        .header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.occurrenceCount").value(7))
+                .andExpect(jsonPath("$.occurrences.length()").value(2))
+                .andExpect(jsonPath("$.nextPage").isEmpty());
+
+        mvc.perform(get(path).header("Authorization", authorization)).andExpect(status().isNotFound());
+        mvc.perform(get(path).header("X-Incident-Edge", INCIDENT_KEY)).andExpect(status().isNotFound());
+        String invalidAuth = authorization.substring(0, authorization.length() - 1)
+                + (authorization.endsWith("a") ? "b" : "a");
+        mvc.perform(get(path).header("X-Incident-Edge", INCIDENT_KEY).header("Authorization", invalidAuth))
+                .andExpect(status().isNotFound());
+
+        var other = queue.claim(servers.getByServerName("incident-other").getId());
+        mvc.perform(get("/api/incidents/" + other.deliveryId()).header("X-Incident-Edge", INCIDENT_KEY)
+                        .header("Authorization", authorization))
+                .andExpect(status().isNotFound());
+        queue.complete(other);
+
+        queue.retry(first);
+        given(clock.millis()).willReturn(301_000L);
+        var retry = queue.claim(server.getId());
+        assertThat(retry.message()).isEqualTo(first.message());
+        queue.complete(retry);
+
+        given(clock.millis()).willReturn(86_401_000L);
+        mvc.perform(get(path).header("X-Incident-Edge", INCIDENT_KEY).header("Authorization", authorization))
+                .andExpect(status().isNotFound());
+        var summary = queue.claim(server.getId());
+        assertThat(summary.message()).doesNotContain("[자세히 보기]");
+        queue.complete(summary);
     }
 
     @Test

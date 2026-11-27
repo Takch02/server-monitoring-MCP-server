@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface ServerLogRepository extends JpaRepository<ServerLog, Long> {
     @Modifying
@@ -40,6 +41,8 @@ public interface ServerLogRepository extends JpaRepository<ServerLog, Long> {
             ) g JOIN server_log r ON r.id=g.sample_id ORDER BY g.n DESC, g.group_key
             """, nativeQuery = true)
     List<AlertGroup> topAlertGroups(long serverId, String delivery, Pageable limit);
+
+    Optional<ServerLog> findFirstByServer_IdAndAlertDeliveryOrderById(long serverId, String alertDelivery);
 
     long countByServer_IdAndAlertDelivery(long serverId, String alertDelivery);
 

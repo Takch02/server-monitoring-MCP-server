@@ -80,3 +80,7 @@ mcp:
 
 alerts:
   webhook-key: ${ALERT_WEBHOOK_KEY}
+
+incidents:
+  public-url: ${INCIDENT_PUBLIC_URL:}
+  link-key: ${INCIDENT_LINK_KEY:}
