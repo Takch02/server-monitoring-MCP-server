@@ -31,14 +31,18 @@ public class IncidentService {
     private static final int INCIDENT_WINDOW_MINUTES = 5;
     private static final int PAGE_SIZE = 5;
     private static final int LOG_CHAR_LIMIT = 16384;
+    private static final String SECRET_HEADER_NAMES = "(?:authorization|proxy-authorization|cookie|set-cookie)";
+    private static final String SECRET_KEYS = "(?:token|(?:auth|access|refresh|ingest|mcp)[_-]?token|x-mcp-token"
+            + "|secret|client[_-]?secret|password|db[_-]?password|passwd|api[_-]?key|discord[_-]?webhook[_-]?url|webhook)";
     private static final Pattern ID = Pattern.compile("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
     private static final Pattern AUTH_TOKEN = Pattern.compile("(?i)(\\b(?:Bearer|Basic)[ \\t]+)[^\\s,;]+");
+    private static final Pattern QUOTED_SECRET = Pattern.compile(
+            "(?i)(\\b(?:" + SECRET_HEADER_NAMES + "|" + SECRET_KEYS + ")[\"']?[ \\t]*[:=][ \\t]*)([\"'])"
+                    + "(?:\\\\[^\\r\\n]|(?!\\2)[^\\\\\\r\\n])*+\\2");
     private static final Pattern SECRET_HEADER = Pattern.compile(
-            "(?im)(\\b(?:authorization|proxy-authorization|cookie|set-cookie)[ \\t]*:[ \\t]*)[^\\r\\n]+");
+            "(?i)(\\b" + SECRET_HEADER_NAMES + "[ \\t]*:[ \\t]*)[^\\r\\n]+");
     private static final Pattern SECRET = Pattern.compile(
-            "(?i)(\\b(?:token|(?:access|refresh|ingest|mcp)[_-]?token|x-mcp-token|secret|client[_-]?secret"
-                    + "|password|db[_-]?password|passwd|api[_-]?key|discord[_-]?webhook[_-]?url|webhook)"
-                    + "[\"']?[ \\t]*[:=][ \\t]*)(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s&,;}]+)");
+            "(?i)(\\b" + SECRET_KEYS + "[\"']?[ \\t]*[:=][ \\t]*)[^\\s&,;}]+");
     private static final Pattern WEBHOOK = Pattern.compile(
             "(?i)https://(?:[\\w-]+\\.)?discord(?:app)?\\.com/api/(?:v\\d+/)?webhooks/[^\\s\"'<>]+");
     private static final Pattern URL_PASSWORD = Pattern.compile("(://[^:/@\\s]+:)[^@/\\s]+@");
@@ -103,6 +107,7 @@ public class IncidentService {
 
     private Occurrence occurrence(ServerLog log) {
         String message = log.getMessage() == null ? "" : log.getMessage();
+        message = QUOTED_SECRET.matcher(message).replaceAll("$1[REDACTED]");
         message = SECRET_HEADER.matcher(message).replaceAll("$1[REDACTED]");
         message = AUTH_TOKEN.matcher(message).replaceAll("$1[REDACTED]");
         message = SECRET.matcher(message).replaceAll("$1[REDACTED]");

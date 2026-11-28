@@ -12,13 +12,16 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
 
 import javax.crypto.spec.SecretKeySpec;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -78,6 +81,37 @@ class IncidentServiceTest {
         assertThat(service.getDetail(INCIDENT_ID, "*".repeat(43), authorization, null)).isEmpty();
         assertThat(service.getDetail(INCIDENT_ID, Base64.getEncoder().encodeToString(wrongKey), authorization, null)).isEmpty();
         then(incidents).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void 대표_로그와_발생_기록에서_JSON_자격증명을_가리고_오류_내용은_보존한다() {
+        var service = service();
+        var server = TargetServer.builder().serverName("demo").build();
+        var log = mock(ServerLog.class);
+        var start = LocalDateTime.of(2026, 1, 1, 10, 0);
+        var end = start.plusMinutes(5);
+        given(log.getId()).willReturn(1L);
+        given(log.getServer()).willReturn(server);
+        given(log.getCreatedAt()).willReturn(start);
+        given(log.getErrorGroupKey()).willReturn("group");
+        given(log.getMessage()).willReturn("""
+                {"authToken":"token-sample","cookie":"sid=cookie-sample","authorization":"Bearer auth-sample",
+                 "proxy-authorization":"Basic proxy-sample","set-cookie":"sid=\\\"cookie-quoted\\\"; Path=/",
+                 "message":"외부 API 시간 초과"}
+                """);
+        var incident = new Incident(INCIDENT_ID, log, end, 1_000L);
+        given(incidents.findById(INCIDENT_ID)).willReturn(Optional.of(incident));
+        given(logs.findIncidentOccurrences(server, "group", start, end, null, PageRequest.ofSize(6)))
+                .willReturn(List.of(log));
+        given(logs.findById(1L)).willReturn(Optional.of(log));
+
+        var detail = service.getDetail(INCIDENT_ID, Base64.getEncoder().encodeToString(TEST_KEY),
+                authorization(service), null).orElseThrow();
+
+        assertThat(detail.representative().message())
+                .contains("[REDACTED]", "외부 API 시간 초과")
+                .doesNotContain("token-sample", "cookie-sample", "auth-sample", "proxy-sample", "cookie-quoted", "Path=/");
+        assertThat(detail.occurrences()).containsExactly(detail.representative());
     }
 
     private IncidentService service() {
