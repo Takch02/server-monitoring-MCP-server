@@ -19,7 +19,7 @@ type Incident = {
   occurrenceCount: number;
   representative: Occurrence | null;
   occurrences: Occurrence[];
-  nextPage: number | null;
+  nextCursor: string | null;
 };
 
 const pathMatch = /^\/incidents\/([0-9a-f-]{36})\/?$/.exec(window.location.pathname);
@@ -40,8 +40,9 @@ function formatWindowTime(time: string) {
 
 class InvalidLink extends Error {}
 
-async function loadIncident(page: number, signal?: AbortSignal): Promise<Incident> {
-  const response = await fetch(`/api/incidents/${incidentId}?page=${page}`, {
+async function loadIncident(before: string | null, signal?: AbortSignal): Promise<Incident> {
+  const query = before ? '?' + new URLSearchParams({ before }) : '';
+  const response = await fetch(`/api/incidents/${incidentId}${query}`, {
     headers: { Authorization: `Bearer ${token}` },
     credentials: 'omit',
     cache: 'no-store',
@@ -73,7 +74,7 @@ function IncidentScreen() {
   useEffect(() => {
     if (!token || !incidentId) return;
     const controller = new AbortController();
-    loadIncident(0, controller.signal).then(setIncident).catch((error: unknown) => {
+    loadIncident(null, controller.signal).then(setIncident).catch((error: unknown) => {
       if (controller.signal.aborted) return;
       setFailure(error instanceof InvalidLink ? 'link' : 'request');
     });
@@ -81,11 +82,11 @@ function IncidentScreen() {
   }, [attempt]);
 
   async function showMore() {
-    if (incident?.nextPage == null || loadingMore) return;
+    if (incident?.nextCursor == null || loadingMore) return;
     setLoadingMore(true);
     setMoreFailed(false);
     try {
-      const next = await loadIncident(incident.nextPage);
+      const next = await loadIncident(incident.nextCursor);
       setIncident({ ...next, occurrences: [...incident.occurrences, ...next.occurrences] });
     } catch (error) {
       if (error instanceof InvalidLink) {
@@ -149,7 +150,7 @@ function IncidentScreen() {
               </details>
             ))}
           </div>
-          {incident.nextPage !== null &&
+          {incident.nextCursor !== null &&
             <button className="more" disabled={loadingMore} onClick={showMore}>{loadingMore ? '불러오는 중' : '발생 기록 더 보기'}</button>}
           {moreFailed && <p role="alert">기록을 더 불러오지 못했습니다. 다시 시도해 주세요.</p>}
         </aside>

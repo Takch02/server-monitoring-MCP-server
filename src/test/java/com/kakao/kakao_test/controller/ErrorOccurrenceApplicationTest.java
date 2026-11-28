@@ -1,5 +1,6 @@
 package com.kakao.kakao_test.controller;
 
+import com.jayway.jsonpath.JsonPath;
 import com.kakao.kakao_test.domain.TargetServer;
 import com.kakao.kakao_test.repository.ServerLogRepository;
 import com.kakao.kakao_test.repository.TargetServerRepository;
@@ -174,11 +175,11 @@ class ErrorOccurrenceApplicationTest {
     }
 
     @Test
-    void 첫알림_링크는_같은서버의_동일그룹만_24시간_보여준다() throws Exception {
+    void 첫알림_링크는_같은서버와_오류그룹의_첫_5분을_24시간_보여준다() throws Exception {
         var server = servers.saveAndFlush(TargetServer.builder().serverName("incident").mcpToken("incident-token").build());
         servers.saveAndFlush(TargetServer.builder().serverName("incident-other").mcpToken("incident-other-token").build());
         String detail = "java.lang.IllegalStateException: password=private-value";
-        String repeated = IntStream.range(0, 7).mapToObj(index -> error("snapshot-" + index, detail))
+        String repeated = IntStream.range(0, 7).mapToObj(index -> error("initial-" + index, detail))
                 .collect(Collectors.joining(","));
         ingest("incident-other", "[" + error("other", detail) + "]");
         ingest("incident", "[" + repeated + "," + error("different", "java.lang.NullPointerException") + "]");
@@ -191,25 +192,40 @@ class ErrorOccurrenceApplicationTest {
         String path = "/api" + uri.getPath();
         String authorization = "Bearer " + uri.getFragment().substring("token=".length());
 
-        mvc.perform(get(path).header("X-Incident-Edge", INCIDENT_KEY).header("Authorization", authorization))
+        var firstResponse = mvc.perform(get(path).header("X-Incident-Edge", INCIDENT_KEY)
+                        .header("Authorization", authorization))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "private, no-store"))
                 .andExpect(header().string("Referrer-Policy", "no-referrer"))
                 .andExpect(jsonPath("$.occurrenceCount").value(7))
                 .andExpect(jsonPath("$.representative.message").value("java.lang.IllegalStateException: password=[REDACTED]"))
                 .andExpect(jsonPath("$.occurrences.length()").value(5))
-                .andExpect(jsonPath("$.nextPage").value(1));
+                .andExpect(jsonPath("$.nextCursor").isString())
+                .andReturn();
+        String cursor = JsonPath.read(firstResponse.getResponse().getContentAsString(), "$.nextCursor");
 
-        // 같은 수신 시각으로 늦게 저장된 행도 이미 발급한 링크의 결과를 바꾸지 않는다.
-        ingest("incident", "[" + error("late", detail) + "]");
-        jdbc.update("UPDATE server_log SET created_at=(SELECT window_end FROM incident WHERE id=?) WHERE event_id='late'",
-                first.deliveryId());
-        mvc.perform(get(path).param("page", "1").header("X-Incident-Edge", INCIDENT_KEY)
+        ingest("incident", "[" + error("minute-four", detail) + "," + error("minute-five", detail) + ","
+                + error("hour-later", detail) + "," + error("before-first", detail) + "]");
+        LocalDateTime start = jdbc.queryForObject("SELECT window_start FROM incident WHERE id=?",
+                LocalDateTime.class, first.deliveryId());
+        String setReceivedAt = "UPDATE server_log SET created_at=? WHERE event_id=?";
+        jdbc.update(setReceivedAt, start.plusMinutes(4), "minute-four");
+        jdbc.update(setReceivedAt, start.plusMinutes(5), "minute-five");
+        jdbc.update(setReceivedAt, start.plusHours(1), "hour-later");
+        jdbc.update(setReceivedAt, start.minusSeconds(1), "before-first");
+        Long newLogId = jdbc.queryForObject("SELECT id FROM server_log WHERE event_id='minute-four'", Long.class);
+
+        mvc.perform(get(path).header("X-Incident-Edge", INCIDENT_KEY).header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.occurrenceCount").value(8))
+                .andExpect(jsonPath("$.occurrences[0].id").value(newLogId.toString()));
+
+        mvc.perform(get(path).param("before", cursor).header("X-Incident-Edge", INCIDENT_KEY)
                         .header("Authorization", authorization))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.occurrenceCount").value(7))
+                .andExpect(jsonPath("$.occurrenceCount").value(8))
                 .andExpect(jsonPath("$.occurrences.length()").value(2))
-                .andExpect(jsonPath("$.nextPage").isEmpty());
+                .andExpect(jsonPath("$.nextCursor").isEmpty());
 
         mvc.perform(get(path).header("Authorization", authorization)).andExpect(status().isNotFound());
         mvc.perform(get(path).header("X-Incident-Edge", INCIDENT_KEY)).andExpect(status().isNotFound());
@@ -229,6 +245,12 @@ class ErrorOccurrenceApplicationTest {
         var retry = queue.claim(server.getId());
         assertThat(retry.message()).isEqualTo(first.message());
         queue.complete(retry);
+
+        given(clock.millis()).willReturn(3_601_000L);
+        mvc.perform(get(path).header("X-Incident-Edge", INCIDENT_KEY).header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.occurrenceCount").value(8))
+                .andExpect(jsonPath("$.occurrences[0].id").value(newLogId.toString()));
 
         given(clock.millis()).willReturn(86_401_000L);
         mvc.perform(get(path).header("X-Incident-Edge", INCIDENT_KEY).header("Authorization", authorization))

@@ -8,6 +8,7 @@ import com.kakao.kakao_test.dto.IncidentDetailDto.Occurrence;
 import com.kakao.kakao_test.repository.IncidentRepository;
 import com.kakao.kakao_test.repository.ServerLogRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -53,16 +54,10 @@ public class IncidentService {
 
         ServerLog representative = serverLogRepository.findFirstByServer_IdAndAlertDeliveryOrderById(serverId, deliveryId)
                 .orElseThrow();
-        var receivedAt = representative.getCreatedAt();
-        var databaseNow = incidentRepository.currentDatabaseTime(representative.getId());
-        var latestEnd = receivedAt.plusMinutes(INCIDENT_WINDOW_MINUTES);
-        var end = databaseNow.isAfter(latestEnd) ? latestEnd : databaseNow;
-        if (end.isBefore(receivedAt)) end = receivedAt;
         Incident incident = new Incident(deliveryId, representative,
-                receivedAt.minusMinutes(INCIDENT_WINDOW_MINUTES), end, clock.millis() + LINK_LIFETIME.toMillis());
-        incidentRepository.saveAndFlush(incident);
-        incidentRepository.snapshotOccurrences(incident.getId(), serverId, incident.getErrorGroupKey(),
-                incident.getWindowStart(), incident.getWindowEnd());
+                representative.getCreatedAt().plusMinutes(INCIDENT_WINDOW_MINUTES),
+                clock.millis() + LINK_LIFETIME.toMillis());
+        incidentRepository.save(incident);
     }
 
     @Transactional(readOnly = true)
@@ -76,7 +71,7 @@ public class IncidentService {
     }
 
     @Transactional(readOnly = true)
-    public Optional<IncidentDetailDto> getDetail(String id, String edgeHeader, String authorization, int page) {
+    public Optional<IncidentDetailDto> getDetail(String id, String edgeHeader, String authorization, Long beforeId) {
         if (!settings.enabled() || !matchesEdgeKey(edgeHeader) || !ID.matcher(id).matches()
                 || authorization == null || authorization.length() != 50 || !authorization.startsWith("Bearer ")) {
             return Optional.empty();
@@ -85,21 +80,25 @@ public class IncidentService {
         String token = authorization.substring("Bearer ".length());
         return incidentRepository.findById(id)
                 .filter(incident -> clock.millis() < incident.getExpiresAt() && matches(token, signature(incident)))
-                .map(incident -> detail(incident, page));
+                .map(incident -> detail(incident, beforeId));
     }
 
-    private IncidentDetailDto detail(Incident incident, int page) {
+    private IncidentDetailDto detail(Incident incident, Long beforeId) {
         String id = incident.getId();
-        long offset = (long) page * PAGE_SIZE;
-        long count = incidentRepository.countOccurrences(id);
-        var logs = incidentRepository.findOccurrences(id, PAGE_SIZE + 1, offset);
-        Integer nextPage = logs.size() > PAGE_SIZE ? page + 1 : null;
+        var server = incident.getServer();
+        String groupKey = incident.getErrorGroupKey();
+        var start = incident.getWindowStart();
+        var end = incident.getWindowEnd();
+        long count = serverLogRepository.countIncidentOccurrences(server, groupKey, start, end);
+        var logs = serverLogRepository.findIncidentOccurrences(server, groupKey, start, end, beforeId,
+                PageRequest.ofSize(PAGE_SIZE + 1));
+        String nextCursor = logs.size() > PAGE_SIZE ? logs.get(PAGE_SIZE - 1).getId().toString() : null;
         var occurrences = logs.stream().limit(PAGE_SIZE).map(this::occurrence).toList();
         Occurrence representative = serverLogRepository.findById(incident.getRepresentativeLogId())
                 .map(this::occurrence).orElse(null);
         return new IncidentDetailDto(id, incident.getServer().getServerName(), incident.getErrorGroupKey(),
                 incident.getWindowStart(), incident.getWindowEnd(), Instant.ofEpochMilli(incident.getExpiresAt()),
-                count, representative, occurrences, nextPage);
+                count, representative, occurrences, nextCursor);
     }
 
     private Occurrence occurrence(ServerLog log) {

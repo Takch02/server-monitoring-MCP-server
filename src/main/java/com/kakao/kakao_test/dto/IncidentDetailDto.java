@@ -6,6 +6,6 @@ import java.util.List;
 
 public record IncidentDetailDto(String id, String serverName, String errorGroupKey, LocalDateTime windowStart,
                                 LocalDateTime windowEnd, Instant expiresAt, long occurrenceCount,
-                                Occurrence representative, List<Occurrence> occurrences, Integer nextPage) {
+                                Occurrence representative, List<Occurrence> occurrences, String nextCursor) {
     public record Occurrence(String id, Instant occurredAt, String message, boolean truncated) {}
 }

@@ -46,6 +46,27 @@ public interface ServerLogRepository extends JpaRepository<ServerLog, Long> {
 
     long countByServer_IdAndAlertDelivery(long serverId, String alertDelivery);
 
+    @Query("""
+            select count(l) from ServerLog l
+            where l.server=:server and l.errorGroupKey=:groupKey
+              and l.createdAt>=:start and l.createdAt<:end
+            """)
+    long countIncidentOccurrences(TargetServer server, String groupKey, LocalDateTime start, LocalDateTime end);
+
+    @Query("""
+            select l from ServerLog l
+            where l.server=:server and l.errorGroupKey=:groupKey
+              and l.createdAt>=:start and l.createdAt<:end
+              and (:beforeId is null or exists (
+                  select anchorLog.id from ServerLog anchorLog
+                  where anchorLog.id=:beforeId and anchorLog.server=l.server and anchorLog.errorGroupKey=l.errorGroupKey
+                    and anchorLog.createdAt>=:start and anchorLog.createdAt<:end
+                    and (l.createdAt<anchorLog.createdAt or (l.createdAt=anchorLog.createdAt and l.id<anchorLog.id))))
+            order by l.createdAt desc, l.id desc
+            """)
+    List<ServerLog> findIncidentOccurrences(TargetServer server, String groupKey, LocalDateTime start,
+                                            LocalDateTime end, Long beforeId, Pageable limit);
+
     interface ErrorGroupCount {
         String getGroupKey();
         long getOccurrences();

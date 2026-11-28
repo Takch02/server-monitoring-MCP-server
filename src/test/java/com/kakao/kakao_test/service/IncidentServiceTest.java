@@ -38,7 +38,7 @@ class IncidentServiceTest {
         var service = new IncidentService(incidents, logs, settings, Clock.systemUTC());
 
         assertThat(service.getDetail("12345678-1234-1234-1234-123456789abc", null,
-                "Bearer " + "a".repeat(43), 0)).isEmpty();
+                "Bearer " + "a".repeat(43), null)).isEmpty();
         then(incidents).shouldHaveNoInteractions();
     }
 }

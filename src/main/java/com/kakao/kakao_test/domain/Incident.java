@@ -31,12 +31,12 @@ public class Incident extends BaseTimeEntity {
     private LocalDateTime windowEnd;
     private long expiresAt;
 
-    public Incident(String deliveryId, ServerLog representative, LocalDateTime windowStart, LocalDateTime windowEnd, long expiresAt) {
+    public Incident(String deliveryId, ServerLog representative, LocalDateTime windowEnd, long expiresAt) {
         id = deliveryId;
         server = representative.getServer();
         errorGroupKey = representative.getErrorGroupKey();
         representativeLogId = representative.getId();
-        this.windowStart = windowStart;
+        windowStart = representative.getCreatedAt();
         this.windowEnd = windowEnd;
         this.expiresAt = expiresAt;
     }

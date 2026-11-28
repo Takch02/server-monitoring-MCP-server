@@ -22,11 +22,19 @@ public class IncidentController {
             @PathVariable String id,
             @RequestHeader(value = "X-Incident-Edge", required = false) String edgeHeader,
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
-            @RequestParam(defaultValue = "0") String page,
+            @RequestParam(required = false) String before,
             HttpServletResponse response) {
         response.setHeader(HttpHeaders.CACHE_CONTROL, "private, no-store");
         response.setHeader("Referrer-Policy", "no-referrer");
-        if (!page.matches("[0-9]{1,8}")) return ResponseEntity.badRequest().build();
-        return ResponseEntity.of(incidentService.getDetail(id, edgeHeader, authorization, Integer.parseInt(page)));
+        Long beforeId = null;
+        if (before != null) {
+            try {
+                beforeId = Long.valueOf(before);
+                if (beforeId < 1) return ResponseEntity.badRequest().build();
+            } catch (NumberFormatException e) {
+                return ResponseEntity.badRequest().build();
+            }
+        }
+        return ResponseEntity.of(incidentService.getDetail(id, edgeHeader, authorization, beforeId));
     }
 }
