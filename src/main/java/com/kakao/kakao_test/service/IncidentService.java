@@ -130,8 +130,13 @@ public class IncidentService {
     }
 
     private boolean matchesEdgeKey(String supplied) {
-        if (supplied == null || supplied.length() != 44) return false;
-        return matches(supplied, Base64.getEncoder().encodeToString(settings.signingKey().getEncoded()));
+        if (supplied == null || (supplied.length() != 43 && supplied.length() != 44)) return false;
+        try {
+            byte[] decoded = Base64.getDecoder().decode(supplied);
+            return MessageDigest.isEqual(settings.signingKey().getEncoded(), decoded);
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     private boolean matches(String supplied, String expected) {
