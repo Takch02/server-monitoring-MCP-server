@@ -1,0 +1,39 @@
+{
+    auto_https disable_redirects
+}
+
+server-doctor.xyz {
+    tls {
+        issuer acme {
+            disable_http_challenge
+        }
+    }
+
+    @incidentApi path /api/incidents /api/incidents/*
+    handle @incidentApi {
+        reverse_proxy 127.0.0.1:80 {
+            header_up X-Incident-Edge "{$INCIDENT_LINK_KEY}"
+        }
+    }
+
+    handle /incidents/* {
+        root * /srv/server-doctor-web
+        header {
+            Cache-Control "private, no-store"
+            Referrer-Policy "no-referrer"
+            Content-Security-Policy "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'"
+            X-Robots-Tag "noindex, nofollow"
+        }
+        try_files {path} /index.html
+        file_server
+    }
+
+    handle /assets/* {
+        root * /srv/server-doctor-web
+        file_server
+    }
+
+    handle {
+        reverse_proxy 127.0.0.1:80
+    }
+}

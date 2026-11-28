@@ -27,6 +27,7 @@ public class LogAlertQueue {
     private final LogAlertDeliveryRepository logAlertDeliveryRepository;
     private final ServerLogRepository serverLogRepository;
     private final Clock clock;
+    private final IncidentService incidentService;
 
     public record Claim(long serverId, String deliveryId, String leaseToken, String encryptedWebhook, String message) {}
     public List<Long> readyServers() {
@@ -47,8 +48,12 @@ public class LogAlertQueue {
                     : serverLogRepository.assignAllPending(delivery, serverId);
             if (assigned == 0) return null;
             logAlertDeliveryRepository.save(new LogAlertDelivery(delivery, serverId));
+            if (state.getLastSentAt() == null) incidentService.captureFirstAlert(delivery, serverId);
         }
         String message = summary(serverId, state.getServer().getServerName(), delivery);
+        if (state.getLastSentAt() == null) {
+            message += incidentService.linkFor(delivery).map(url -> "\n[자세히 보기](" + url + ")").orElse("");
+        }
         String token = UUID.randomUUID().toString();
         state.reserve(delivery, token, clock.millis() + LEASE);
         return new Claim(serverId, delivery, token, state.getEncryptedWebhook(), message);

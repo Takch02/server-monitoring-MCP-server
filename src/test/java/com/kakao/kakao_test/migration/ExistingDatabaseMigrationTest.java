@@ -25,7 +25,7 @@ class ExistingDatabaseMigrationTest {
             statement.executeUpdate("INSERT INTO log_alert_delivery (id, server_id, sent_at) VALUES ('old-delivery', 1, 1000)");
 
             var upgrade = Flyway.configure().dataSource(url, "sa", "").load();
-            assertThat(upgrade.migrate().migrationsExecuted).isEqualTo(1);
+            assertThat(upgrade.migrate().migrationsExecuted).isEqualTo(2);
             assertThat(upgrade.migrate().migrationsExecuted).isZero();
 
             try (var rows = statement.executeQuery("""
