@@ -24,6 +24,8 @@ jobs:
       # 1. 코드 가져오기
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # 2. JDK 설정
       - name: Set up JDK
@@ -38,7 +40,6 @@ jobs:
 
       # 4. Docker buildx 활성화
       - name: Set up Docker Buildx
-        if: github.event_name == 'push'
         uses: docker/setup-buildx-action@v3
 
       # 5. GHCR 로그인
@@ -61,6 +62,17 @@ jobs:
           tags: |
             ghcr.io/takch02/mcp-server:latest
             ghcr.io/takch02/mcp-server:${{ github.sha }}
+
+      - name: Build Incident Web Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deploy/incident-web.Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/takch02/mcp-server:incident-web-latest
+            ghcr.io/takch02/mcp-server:incident-web-${{ github.sha }}
 
       # 7. Oracle 서버 배포
       - name: Deploy to Oracle Server
@@ -151,5 +163,94 @@ jobs:
               echo "Rollback passed its health check"
             else
               echo "Rollback failed to restore a healthy container"
+            fi
+            exit 1
+
+      - name: Deploy Incident Web to Oracle Server
+        if: github.event_name == 'push'
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          INCIDENT_WEB_IMAGE_TAG: ${{ github.sha }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: INCIDENT_WEB_IMAGE_TAG
+          script: |
+            set -eu
+
+            BACKEND=${{ env.CONTAINER_NAME }}
+            CONTAINER=server-doctor-caddy
+            DOMAIN=server-doctor.xyz
+            DEPLOY_IMAGE="${{ env.IMAGE_NAME }}:incident-web-${INCIDENT_WEB_IMAGE_TAG:?}"
+
+            if ! INCIDENT_LINK_KEY=$(docker exec "$BACKEND" printenv INCIDENT_LINK_KEY) || [ -z "$INCIDENT_LINK_KEY" ]; then
+              echo "Set INCIDENT_LINK_KEY in ~/mcp-server/.env and deploy MCP Server"
+              exit 1
+            fi
+            export INCIDENT_LINK_KEY
+            PUBLIC_URL=$(docker exec "$BACKEND" printenv INCIDENT_PUBLIC_URL || true)
+            if [ "${PUBLIC_URL%/}" != "https://$DOMAIN" ]; then
+              echo "Set INCIDENT_PUBLIC_URL=https://$DOMAIN in ~/mcp-server/.env and deploy MCP Server"
+              exit 1
+            fi
+
+            docker pull "$DEPLOY_IMAGE"
+            docker run --rm --env INCIDENT_LINK_KEY "$DEPLOY_IMAGE" \
+              caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+            previous_id=$(docker ps -aq --no-trunc --filter "name=^/${CONTAINER}$")
+            data_source=server-doctor-caddy-data
+            config_source=server-doctor-caddy-config
+            if [ -n "$previous_id" ]; then
+              data_mount=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{or .Name .Source}}{{end}}{{end}}' "$previous_id")
+              config_mount=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/config"}}{{or .Name .Source}}{{end}}{{end}}' "$previous_id")
+              data_source=${data_mount:-$data_source}
+              config_source=${config_mount:-$config_source}
+            fi
+
+            candidate_id=$(docker create --name "$CONTAINER-candidate-$INCIDENT_WEB_IMAGE_TAG" \
+              --restart unless-stopped --network host --env INCIDENT_LINK_KEY \
+              -v "$data_source:/data" -v "$config_source:/config" "$DEPLOY_IMAGE")
+            if [ -n "$previous_id" ] && ! docker rename "$previous_id" "$CONTAINER-previous-$previous_id"; then
+              docker rm "$candidate_id"
+              exit 1
+            fi
+
+            https_get() {
+              curl --fail --silent --noproxy '*' --max-time 5 --resolve "$DOMAIN:443:127.0.0.1" \
+                "https://$DOMAIN$1"
+            }
+
+            wait_for_web() {
+              for attempt in $(seq 1 12); do
+                if page=$(https_get /incidents/deploy-check) &&
+                    printf '%s\n' "$page" | grep -Fq '<div id="root"></div>' &&
+                    asset=$(printf '%s\n' "$page" | sed -nE 's@.*src="(/assets/[^" ]+\.js)".*@\1@p') &&
+                    [ -n "$asset" ] && https_get "$asset" >/dev/null &&
+                    health=$(https_get /actuator/health) &&
+                    printf '%s\n' "$health" | grep -Eq '^[[:space:]]*\{[[:space:]]*"status"[[:space:]]*:[[:space:]]*"UP"'; then
+                  return 0
+                fi
+                if [ "$attempt" -lt 12 ]; then sleep 5; fi
+              done
+              return 1
+            }
+
+            if { [ -z "$previous_id" ] || docker stop "$previous_id"; } &&
+                docker start "$candidate_id" && wait_for_web && docker rename "$candidate_id" "$CONTAINER"; then
+              echo "Caddy serves the incident page, its JavaScript and MCP health over HTTPS"
+              if [ -n "$previous_id" ] && ! docker rm "$previous_id"; then
+                docker update --restart=no "$previous_id"
+                echo "Previous Caddy container preserved with automatic restart disabled"
+              fi
+              exit 0
+            fi
+
+            echo "Incident web deployment failed for $DEPLOY_IMAGE"
+            if docker stop "$candidate_id"; then
+              docker rename "$candidate_id" "$CONTAINER-failed-$candidate_id" || true
+            fi
+            if [ -n "$previous_id" ] && docker rename "$previous_id" "$CONTAINER" && docker start "$previous_id"; then
+              echo "Previous Caddy container restarted"
             fi
             exit 1
