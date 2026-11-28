@@ -16,6 +16,9 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.event_name == 'push' && 'mcp-server-production' || github.run_id }}
+      cancel-in-progress: false
 
     steps:
       # 1. 코드 가져오기
@@ -66,64 +69,87 @@ jobs:
         env:
           MCP_PUBLIC_HOST: ${{ secrets.EC2_HOST }}
           MCP_PUBLIC_PORT: "80"
+          MCP_IMAGE_TAG: ${{ github.sha }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: MCP_PUBLIC_HOST,MCP_PUBLIC_PORT
+          envs: MCP_PUBLIC_HOST,MCP_PUBLIC_PORT,MCP_IMAGE_TAG
+          command_timeout: 15m
           script: |
+            set -eu
+
             IMAGE=${{ env.IMAGE_NAME }}
             CONTAINER=${{ env.CONTAINER_NAME }}
+            DEPLOY_IMAGE="$IMAGE:${MCP_IMAGE_TAG:?}"
             PUBLIC_URL="http://${MCP_PUBLIC_HOST:?}:${MCP_PUBLIC_PORT:?}"
+            ENV_FILE="$HOME/mcp-server/.env"
+            HEALTH_URL="http://127.0.0.1:${MCP_PUBLIC_PORT}/actuator/health"
 
-            echo "Pull latest image"
-            docker pull $IMAGE:latest
+            if [ ! -r "$ENV_FILE" ]; then
+              echo "Cannot read the Server Doctor .env file"
+              exit 1
+            fi
 
-            echo "Stop existing container"
-            docker stop $CONTAINER || true
-            docker rm $CONTAINER || true
+            wait_for_health() {
+              deadline=$(( $(date +%s) + 240 ))
+              while :; do
+                now=$(date +%s)
+                remaining=$((deadline - now))
+                if [ "$remaining" -le 0 ]; then return 1; fi
+                request_timeout=3
+                if [ "$remaining" -lt "$request_timeout" ]; then request_timeout=$remaining; fi
+                if health=$(curl --fail --silent --max-time "$request_timeout" "$HEALTH_URL") &&
+                    printf '%s\n' "$health" | grep -Eq '^[[:space:]]*\{[[:space:]]*"status"[[:space:]]*:[[:space:]]*"UP"'; then
+                  return 0
+                fi
+                next_check=$((now + 5))
+                if [ "$next_check" -gt "$deadline" ]; then next_check=$deadline; fi
+                delay=$((next_check - $(date +%s)))
+                if [ "$delay" -gt 0 ]; then sleep "$delay"; fi
+              done
+            }
 
-            echo "Run new container"
-            docker run -d \
-              --name $CONTAINER \
+            docker pull "$DEPLOY_IMAGE"
+            previous_id=$(docker ps -aq --no-trunc --filter "name=^/${CONTAINER}$")
+            candidate_id=$(docker create \
+              --name "$CONTAINER-candidate-$MCP_IMAGE_TAG" \
               -p "${MCP_PUBLIC_PORT}:8080" \
-              --env-file /home/${{ secrets.EC2_USERNAME }}/mcp-server/.env \
+              --env-file "$ENV_FILE" \
               --env "AWS_URL=${PUBLIC_URL}" \
               --restart always \
-              $IMAGE:latest
+              "$DEPLOY_IMAGE")
+            if [ -n "$previous_id" ] && ! docker rename "$previous_id" "$CONTAINER-previous-$previous_id"; then
+              docker rm "$candidate_id"
+              exit 1
+            fi
 
-            echo "Waiting 70s for container to initialize..."
-            sleep 70
-
-            echo "Wait for new container to be healthy"
-            for i in $(seq 1 12); do
-              HEALTH=$(curl -s "http://localhost:${MCP_PUBLIC_PORT}/actuator/health" 2>/dev/null || echo "")
-              echo "Attempt $i/12: response=$HEALTH"
-              if echo "$HEALTH" | grep -q '"UP"'; then
-                echo "Health check passed"
-                exit 0
+            if { [ -z "$previous_id" ] || docker stop "$previous_id"; } &&
+                docker start "$candidate_id" && wait_for_health && docker rename "$candidate_id" "$CONTAINER"; then
+              echo "Health check passed for $DEPLOY_IMAGE"
+              if [ -n "$previous_id" ]; then
+                docker rm "$previous_id" || echo "Could not remove the previous container $previous_id"
               fi
-              if [ "$i" = "12" ]; then
-                echo "Health check failed — starting rollback"
-                PREV_IMAGE=$(docker images $IMAGE --format "{{.Tag}}" | grep -v latest | sort -r | sed -n '2p')
-                if [ -n "$PREV_IMAGE" ]; then
-                  docker stop $CONTAINER && docker rm $CONTAINER
-                  docker run -d \
-                    --name $CONTAINER \
-                    -p "${MCP_PUBLIC_PORT}:8080" \
-                    --env-file /home/${{ secrets.EC2_USERNAME }}/mcp-server/.env \
-                    --env "AWS_URL=${PUBLIC_URL}" \
-                    --restart always \
-                    $IMAGE:$PREV_IMAGE
-                  echo "Rolled back to $PREV_IMAGE"
-                else
-                  echo "No previous image found for rollback"
-                fi
-                exit 1
-              fi
-              echo "Not ready yet, retrying in 5s..."
-              sleep 5
-            done
+              exit 0
+            fi
 
-            echo "Clean unused images"
-            docker image prune -f || true
+            echo "Deployment failed for $DEPLOY_IMAGE"
+            docker inspect --format 'status={{.State.Status}} exit={{.State.ExitCode}} restarts={{.RestartCount}}' "$candidate_id" || true
+            if ! docker update --restart=no "$candidate_id"; then
+              echo "Could not disable automatic restart; removing the failed container before rollback"
+              docker rm -f "$candidate_id" || echo "Could not remove the failed container $candidate_id"
+            elif docker stop "$candidate_id"; then
+              failed_name="$CONTAINER-failed-$candidate_id"
+              if docker rename "$candidate_id" "$failed_name"; then
+                echo "Failed container preserved as $failed_name"
+              fi
+            fi
+
+            if [ -z "$previous_id" ]; then
+              echo "No previous container available for rollback"
+            elif docker rename "$previous_id" "$CONTAINER" && docker start "$previous_id" && wait_for_health; then
+              echo "Rollback passed its health check"
+            else
+              echo "Rollback failed to restore a healthy container"
+            fi
+            exit 1
