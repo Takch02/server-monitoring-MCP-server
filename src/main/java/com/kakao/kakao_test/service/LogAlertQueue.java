@@ -19,9 +19,9 @@ import java.util.regex.Pattern;
 @Service
 @RequiredArgsConstructor
 public class LogAlertQueue {
-    private static final long INTERVAL = Duration.ofMinutes(5).toMillis();
+    private static final Duration ALERT_WINDOW = Duration.ofMinutes(5);
     private static final long LEASE = Duration.ofMinutes(6).toMillis();
-    private static final long RETRY = INTERVAL;
+    private static final long RETRY = ALERT_WINDOW.toMillis();
     private static final Pattern EXCEPTION = Pattern.compile("\\b([A-Za-z_$][\\w$]*(?:Exception|Error))\\b");
     private final LogAlertRepository logAlertRepository;
     private final LogAlertDeliveryRepository logAlertDeliveryRepository;
@@ -29,7 +29,8 @@ public class LogAlertQueue {
     private final Clock clock;
     private final IncidentService incidentService;
 
-    public record Claim(long serverId, String deliveryId, String leaseToken, String encryptedWebhook, String message) {}
+    public record Claim(long serverId, String deliveryId, String leaseToken, String encryptedWebhook, String message,
+                        boolean hasDetailLink) {}
     public List<Long> readyServers() {
         return logAlertRepository.readyServers(clock.millis(), PageRequest.ofSize(100));
     }
@@ -42,21 +43,19 @@ public class LogAlertQueue {
         if (state.getAvailableAt() > clock.millis()) return null;
         String delivery = state.getActiveDelivery();
         if (delivery == null) {
+            // 이전 링크에 이미 포함된 오류를 그 링크의 발송에 배정한다.
+            serverLogRepository.assignCoveredPending(serverId);
             delivery = UUID.randomUUID().toString();
-            // 첫 메시지는 한 건만 보낸다. 같은 배치의 나머지도 다음 요약에 남겨 둔다.
-            int assigned = state.getLastSentAt() == null ? serverLogRepository.assignFirstPending(delivery, serverId)
-                    : serverLogRepository.assignAllPending(delivery, serverId);
+            int assigned = serverLogRepository.assignAllPending(delivery, serverId);
             if (assigned == 0) return null;
             logAlertDeliveryRepository.save(new LogAlertDelivery(delivery, serverId));
-            if (state.getLastSentAt() == null) incidentService.captureFirstAlert(delivery, serverId);
         }
         String message = summary(serverId, state.getServer().getServerName(), delivery);
-        if (state.getLastSentAt() == null) {
-            message += incidentService.linkFor(delivery).map(url -> "\n[자세히 보기](" + url + ")").orElse("");
-        }
+        var link = incidentService.linkForAlert(delivery, serverId);
+        message += link.map(url -> "\n[자세히 보기](" + url + ")").orElse("");
         String token = UUID.randomUUID().toString();
         state.reserve(delivery, token, clock.millis() + LEASE);
-        return new Claim(serverId, delivery, token, state.getEncryptedWebhook(), message);
+        return new Claim(serverId, delivery, token, state.getEncryptedWebhook(), message, link.isPresent());
     }
 
     private String summary(long serverId, String name, String delivery) {
@@ -76,9 +75,12 @@ public class LogAlertQueue {
 
     @Transactional
     public void complete(Claim claim) {
+        var start = claim.hasDetailLink() ? logAlertRepository.currentLogReceiptTime() : null;
         long now = clock.millis();
-        if (logAlertRepository.releaseAfterSuccess(claim.serverId(), claim.leaseToken(), now, now + INTERVAL) == 1) {
+        if (logAlertRepository.releaseAfterSuccess(claim.serverId(), claim.leaseToken(), now,
+                now + ALERT_WINDOW.toMillis()) == 1) {
             logAlertDeliveryRepository.markSent(claim.deliveryId(), now);
+            if (start != null) incidentService.confirmWindow(claim.deliveryId(), start, start.plus(ALERT_WINDOW));
         }
     }
 

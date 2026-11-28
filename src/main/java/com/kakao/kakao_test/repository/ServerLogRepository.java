@@ -13,18 +13,26 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ServerLogRepository extends JpaRepository<ServerLog, Long> {
+    String LOG_IN_PUBLISHED_WINDOW = """
+            from Incident i where i.server.id=l.server.id and i.liveWindow=true
+              and l.createdAt>=i.windowStart and l.createdAt<i.windowEnd
+            """;
+
     @Modifying
-    @Query(value = """
-            UPDATE server_log SET alert_delivery=:delivery WHERE server_id=:serverId AND alert_delivery='PENDING'
-            ORDER BY id LIMIT 1
-            """, nativeQuery = true)
-    int assignFirstPending(String delivery, long serverId);
+    @Query("""
+            update ServerLog l set l.alertDelivery=(select min(i.id)
+            """ + LOG_IN_PUBLISHED_WINDOW + """
+            ) where l.server.id=:serverId and l.alertDelivery='PENDING'
+              and exists (select i.id
+            """ + LOG_IN_PUBLISHED_WINDOW + ")")
+    int assignCoveredPending(long serverId);
 
     @Modifying
     @Query("""
             update ServerLog l set l.alertDelivery=:delivery
             where l.server.id=:serverId and l.alertDelivery='PENDING'
-            """)
+              and not exists (select i.id
+            """ + LOG_IN_PUBLISHED_WINDOW + ")")
     int assignAllPending(String delivery, long serverId);
 
     interface AlertGroup {
@@ -42,9 +50,36 @@ public interface ServerLogRepository extends JpaRepository<ServerLog, Long> {
             """, nativeQuery = true)
     List<AlertGroup> topAlertGroups(long serverId, String delivery, Pageable limit);
 
-    Optional<ServerLog> findFirstByServer_IdAndAlertDeliveryOrderById(long serverId, String alertDelivery);
+    Optional<ServerLog> findFirstByServer_IdAndAlertDeliveryOrderByCreatedAtAscIdAsc(long serverId, String alertDelivery);
 
     long countByServer_IdAndAlertDelivery(long serverId, String alertDelivery);
+
+    @Query("select max(l.createdAt) from ServerLog l where l.server.id=:serverId and l.alertDelivery=:delivery")
+    LocalDateTime findLastDeliveryReceivedAt(long serverId, String delivery);
+
+    @Query("""
+            select l from ServerLog l where l.server.id=:serverId and l.alertDelivery=:delivery
+              and (:beforeId is null or l.id<:beforeId)
+            order by l.id desc
+            """)
+    List<ServerLog> findDeliveryOccurrences(long serverId, String delivery, Long beforeId, Pageable limit);
+
+    @Query("""
+            select count(l) from ServerLog l where l.server.id=:serverId and
+              (l.alertDelivery=:delivery or ((l.alertDelivery is null or l.alertDelivery='PENDING')
+                and l.errorGroupKey is not null and l.createdAt>=:start and l.createdAt<:end))
+            """)
+    long countLiveWindowOccurrences(long serverId, String delivery, LocalDateTime start, LocalDateTime end);
+
+    @Query("""
+            select l from ServerLog l where l.server.id=:serverId and
+              (l.alertDelivery=:delivery or ((l.alertDelivery is null or l.alertDelivery='PENDING')
+                and l.errorGroupKey is not null and l.createdAt>=:start and l.createdAt<:end))
+              and (:beforeId is null or l.id<:beforeId)
+            order by l.id desc
+            """)
+    List<ServerLog> findLiveWindowOccurrences(long serverId, String delivery, LocalDateTime start, LocalDateTime end,
+                                              Long beforeId, Pageable limit);
 
     @Query("""
             select count(l) from ServerLog l

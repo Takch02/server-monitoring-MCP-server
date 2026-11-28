@@ -16,6 +16,7 @@ type Incident = {
   windowStart: string;
   windowEnd: string;
   expiresAt: string;
+  deliveryScoped: boolean;
   occurrenceCount: number;
   representative: Occurrence | null;
   occurrences: Occurrence[];
@@ -36,6 +37,10 @@ function formatTime(time: string | null) {
 
 function formatWindowTime(time: string) {
   return time.replace('T', ' ').slice(0, 19);
+}
+
+function getExceptionType(message?: string) {
+  return message?.match(/\b[\w$]+(?:Exception|Error)\b/)?.[0];
 }
 
 class InvalidLink extends Error {}
@@ -112,18 +117,18 @@ function IncidentScreen() {
     );
   }
 
-  const exceptionType = incident.representative?.message.match(/\b[\w$]+(?:Exception|Error)\b/)?.[0];
+  const exceptionType = getExceptionType(incident.representative?.message);
 
   return (
     <main className="incident">
       <header className="incident-header">
         <p className="section-label"><span className="signal" /> 서버 오류</p>
-        <h1>{exceptionType ?? '장애 상세'}</h1>
+        <h1>{incident.deliveryScoped ? '오류 알림 상세' : exceptionType ?? '장애 상세'}</h1>
         <p className="headline-meta">{incident.serverName} · {formatTime(incident.representative?.occurredAt ?? null)} · KST</p>
       </header>
 
       <section className="facts" aria-label="사건 정보">
-        <div><span>오류 그룹</span><strong className="mono" title={incident.errorGroupKey}>{incident.errorGroupKey.slice(0, 8)}</strong></div>
+        <div><span>{incident.deliveryScoped ? '대표 오류 그룹' : '오류 그룹'}</span><strong className="mono" title={incident.errorGroupKey}>{incident.errorGroupKey.slice(0, 8)}</strong></div>
         <div><span>발생 건수</span><strong>{numberFormat.format(incident.occurrenceCount)}건</strong></div>
         <div><span>링크 만료</span><strong>{formatTime(incident.expiresAt)} KST</strong></div>
       </section>
@@ -143,7 +148,9 @@ function IncidentScreen() {
           <div className="occurrences">
             {incident.occurrences.map((entry) => (
               <details key={entry.id}>
-                <summary><span>{formatTime(entry.occurredAt)}{entry.occurredAt && ' KST'}</span>
+                <summary><span>{formatTime(entry.occurredAt)}{entry.occurredAt && ' KST'}
+                  {incident.deliveryScoped && ` · ${getExceptionType(entry.message) ?? '애플리케이션 오류'}`}
+                </span>
                   {entry.id === incident.representative?.id && <small>대표</small>}
                 </summary>
                 <Log occurrence={entry} />

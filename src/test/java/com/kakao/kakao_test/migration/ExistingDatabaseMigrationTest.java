@@ -6,6 +6,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 
 import java.sql.DriverManager;
+import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -24,9 +25,32 @@ class ExistingDatabaseMigrationTest {
             statement.executeUpdate("INSERT INTO log_alert_channel (server_id, webhook_hash, encrypted_webhook) VALUES (1, 'hash', 'fixture')");
             statement.executeUpdate("INSERT INTO log_alert_delivery (id, server_id, sent_at) VALUES ('old-delivery', 1, 1000)");
 
+            var throughV5 = Flyway.configure().dataSource(url, "sa", "").target("5").load();
+            assertThat(throughV5.migrate().migrationsExecuted).isEqualTo(2);
+            statement.executeUpdate("""
+                    INSERT INTO incident (id, server_id, error_group_key, representative_log_id,
+                                          window_start, window_end, expires_at, created_at, updated_at)
+                    SELECT 'old-delivery', server_id, 'old-group', id,
+                           '2026-11-28 10:00:00', '2026-11-28 10:05:00', 86401000, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    FROM server_log WHERE server_id = 1 AND event_id = 'old'
+                    """);
+
             var upgrade = Flyway.configure().dataSource(url, "sa", "").load();
             assertThat(upgrade.migrate().migrationsExecuted).isEqualTo(2);
             assertThat(upgrade.migrate().migrationsExecuted).isZero();
+
+            try (var rows = statement.executeQuery("""
+                    SELECT delivery_scoped, live_window, error_group_key, window_start, window_end, expires_at
+                    FROM incident WHERE id = 'old-delivery'
+                    """)) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getObject("delivery_scoped", Boolean.class)).isFalse();
+                assertThat(rows.getObject("live_window", Boolean.class)).isFalse();
+                assertThat(rows.getString("error_group_key")).isEqualTo("old-group");
+                assertThat(rows.getObject("window_start", LocalDateTime.class)).isEqualTo(LocalDateTime.of(2026, 11, 28, 10, 0));
+                assertThat(rows.getObject("window_end", LocalDateTime.class)).isEqualTo(LocalDateTime.of(2026, 11, 28, 10, 5));
+                assertThat(rows.getLong("expires_at")).isEqualTo(86_401_000L);
+            }
 
             try (var rows = statement.executeQuery("""
                     SELECT c.created_at, c.updated_at, d.created_at, d.updated_at, d.sent_at

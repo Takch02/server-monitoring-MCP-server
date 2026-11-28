@@ -41,10 +41,10 @@ class IncidentServiceTest {
     @Test
     void 공개주소_미설정이면_사건을_저장하거나_링크를_발급하지_않는다() {
         var service = new IncidentService(incidents, logs, new Settings(null, null), Clock.systemUTC());
+        var start = LocalDateTime.of(2026, 1, 1, 10, 0);
 
-        service.captureFirstAlert("delivery", 1L);
-
-        assertThat(service.linkFor("delivery")).isEmpty();
+        assertThat(service.linkForAlert("delivery", 1L)).isEmpty();
+        service.confirmWindow("delivery", start, start.plusMinutes(5));
         then(logs).shouldHaveNoInteractions();
         then(incidents).shouldHaveNoInteractions();
     }
@@ -63,7 +63,7 @@ class IncidentServiceTest {
         var log = mock(ServerLog.class);
         given(log.getId()).willReturn(1L);
         given(log.getServer()).willReturn(server);
-        var incident = new Incident(INCIDENT_ID, log, null, 1_000L);
+        var incident = new Incident(INCIDENT_ID, log, null, 1_000L, false);
         given(incidents.findById(INCIDENT_ID)).willReturn(Optional.of(incident));
         String authorization = authorization(service);
         var encoder = padded ? Base64.getEncoder() : Base64.getEncoder().withoutPadding();
@@ -84,6 +84,29 @@ class IncidentServiceTest {
     }
 
     @Test
+    void 만료된_미발송_알림을_다시_발송할_때_같은_사건의_링크를_갱신한다() {
+        var clock = mock(Clock.class);
+        var settings = new Settings(URI.create("https://server-doctor.example"), new SecretKeySpec(TEST_KEY, "HmacSHA256"));
+        var service = new IncidentService(incidents, logs, settings, clock);
+        var log = mock(ServerLog.class);
+        given(log.getId()).willReturn(1L);
+        var server = TargetServer.builder().serverName("demo").build();
+        given(log.getServer()).willReturn(server);
+        var incident = new Incident(INCIDENT_ID, log, null, 1_000L, false);
+        given(incidents.findById(INCIDENT_ID)).willReturn(Optional.of(incident));
+        String originalAuthorization = authorization(service);
+        given(clock.millis()).willReturn(1_000L);
+
+        String renewedAuthorization = authorization(service);
+        String edgeKey = Base64.getEncoder().encodeToString(TEST_KEY);
+
+        assertThat(renewedAuthorization).isNotEqualTo(originalAuthorization);
+        assertThat(service.getDetail(INCIDENT_ID, edgeKey, originalAuthorization, null)).isEmpty();
+        assertThat(service.getDetail(INCIDENT_ID, edgeKey, renewedAuthorization, null))
+                .hasValueSatisfying(detail -> assertThat(detail.expiresAt()).isEqualTo(Instant.ofEpochMilli(86_401_000L)));
+    }
+
+    @Test
     void 대표_로그와_발생_기록에서_JSON_자격증명을_가리고_오류_내용은_보존한다() {
         var service = service();
         var server = TargetServer.builder().serverName("demo").build();
@@ -99,7 +122,7 @@ class IncidentServiceTest {
                  "proxy-authorization":"Basic proxy-sample","set-cookie":"sid=\\\"cookie-quoted\\\"; Path=/",
                  "message":"외부 API 시간 초과"}
                 """);
-        var incident = new Incident(INCIDENT_ID, log, end, 1_000L);
+        var incident = new Incident(INCIDENT_ID, log, end, 1_000L, false);
         given(incidents.findById(INCIDENT_ID)).willReturn(Optional.of(incident));
         given(logs.findIncidentOccurrences(server, "group", start, end, null, PageRequest.ofSize(6)))
                 .willReturn(List.of(log));
@@ -120,7 +143,7 @@ class IncidentServiceTest {
     }
 
     private String authorization(IncidentService service) {
-        String fragment = URI.create(service.linkFor(INCIDENT_ID).orElseThrow()).getFragment();
+        String fragment = URI.create(service.linkForAlert(INCIDENT_ID, 1L).orElseThrow()).getFragment();
         return "Bearer " + fragment.substring("token=".length());
     }
 }

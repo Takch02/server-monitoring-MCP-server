@@ -28,6 +28,7 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Callable;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasItems;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -175,17 +176,17 @@ class ErrorOccurrenceApplicationTest {
     }
 
     @Test
-    void 첫알림_링크는_같은서버와_오류그룹의_첫_5분을_24시간_보여준다() throws Exception {
+    void 첫알림_링크는_같은서버의_모든_오류_종류를_5분_범위에서_24시간_보여준다() throws Exception {
         var server = servers.saveAndFlush(TargetServer.builder().serverName("incident").mcpToken("incident-token").build());
         servers.saveAndFlush(TargetServer.builder().serverName("incident-other").mcpToken("incident-other-token").build());
         String detail = "java.lang.IllegalStateException: password=private-value";
         String repeated = IntStream.range(0, 7).mapToObj(index -> error("initial-" + index, detail))
                 .collect(Collectors.joining(","));
         ingest("incident-other", "[" + error("other", detail) + "]");
-        ingest("incident", "[" + repeated + "," + error("different", "java.lang.NullPointerException") + "]");
+        ingest("incident", "[" + repeated + "]");
         given(clock.millis()).willReturn(1_000L);
         var first = queue.claim(server.getId());
-        assertThat(first.message()).contains("총 1건", "[자세히 보기]");
+        assertThat(first.message()).contains("총 7건", "[자세히 보기]");
         String link = first.message().substring(first.message().lastIndexOf("](") + 2, first.message().length() - 1);
         URI uri = URI.create(link);
         assertThat(uri.getHost()).isEqualTo("server-doctor.example");
@@ -204,7 +205,13 @@ class ErrorOccurrenceApplicationTest {
                 .andReturn();
         String cursor = JsonPath.read(firstResponse.getResponse().getContentAsString(), "$.nextCursor");
 
-        ingest("incident", "[" + error("minute-four", detail) + "," + error("minute-five", detail) + ","
+        queue.retry(first);
+        given(clock.millis()).willReturn(301_000L);
+        var retry = queue.claim(server.getId());
+        assertThat(retry.message()).isEqualTo(first.message());
+        queue.complete(retry);
+
+        ingest("incident", "[" + error("minute-four", "java.lang.NullPointerException") + "," + error("minute-five", detail) + ","
                 + error("hour-later", detail) + "," + error("before-first", detail) + "]");
         LocalDateTime start = jdbc.queryForObject("SELECT window_start FROM incident WHERE id=?",
                 LocalDateTime.class, first.deliveryId());
@@ -213,12 +220,14 @@ class ErrorOccurrenceApplicationTest {
         jdbc.update(setReceivedAt, start.plusMinutes(5), "minute-five");
         jdbc.update(setReceivedAt, start.plusHours(1), "hour-later");
         jdbc.update(setReceivedAt, start.minusSeconds(1), "before-first");
+        setReceivedAt("other", start.plusMinutes(2));
         Long newLogId = jdbc.queryForObject("SELECT id FROM server_log WHERE event_id='minute-four'", Long.class);
 
         mvc.perform(get(path).header("X-Incident-Edge", INCIDENT_KEY).header("Authorization", authorization))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.occurrenceCount").value(8))
-                .andExpect(jsonPath("$.occurrences[0].id").value(newLogId.toString()));
+                .andExpect(jsonPath("$.occurrences[0].id").value(newLogId.toString()))
+                .andExpect(jsonPath("$.occurrences[0].message").value("java.lang.NullPointerException"));
 
         mvc.perform(get(path).param("before", cursor).header("X-Incident-Edge", INCIDENT_KEY)
                         .header("Authorization", authorization))
@@ -240,12 +249,6 @@ class ErrorOccurrenceApplicationTest {
                 .andExpect(status().isNotFound());
         queue.complete(other);
 
-        queue.retry(first);
-        given(clock.millis()).willReturn(301_000L);
-        var retry = queue.claim(server.getId());
-        assertThat(retry.message()).isEqualTo(first.message());
-        queue.complete(retry);
-
         given(clock.millis()).willReturn(3_601_000L);
         mvc.perform(get(path).header("X-Incident-Edge", INCIDENT_KEY).header("Authorization", authorization))
                 .andExpect(status().isOk())
@@ -256,36 +259,166 @@ class ErrorOccurrenceApplicationTest {
         mvc.perform(get(path).header("X-Incident-Edge", INCIDENT_KEY).header("Authorization", authorization))
                 .andExpect(status().isNotFound());
         var summary = queue.claim(server.getId());
-        assertThat(summary.message()).doesNotContain("[자세히 보기]");
+        assertThat(summary.message()).contains("[자세히 보기]");
         queue.complete(summary);
     }
 
     @Test
-    void 첫오류_후_5분마다_미발송분을_반복그룹까지_집계한다() throws Exception {
-        var server = servers.saveAndFlush(TargetServer.builder().serverName("interval").mcpToken("interval-token").build());
-        String groupA = "java.net.SocketTimeoutException";
-        String groupB = "java.lang.IllegalStateException";
-        String first = error("first", groupA);
-        ingest("interval", "[" + first + "," + error("second", groupA) + "," + error("third", groupB) + "]");
-        var worker = new LogAlertWorker(queue, destination, discord);
+    void 집계_링크는_그_알림의_모든_오류_종류를_보여주고_재시도에도_유지된다() throws Exception {
+        var server = servers.saveAndFlush(TargetServer.builder().serverName("incident-summary")
+                .mcpToken("incident-summary-token").build());
+        String npe = "java.lang.NullPointerException";
+        String timeout = "java.net.SocketTimeoutException";
+        String batch = IntStream.range(0, 6).mapToObj(index -> error("summary-" + index, index < 4 ? npe : timeout))
+                .collect(Collectors.joining(","));
+        ingest("incident-summary", "[" + error("summary-first", "java.lang.IllegalStateException") + "]");
         given(clock.millis()).willReturn(1_000L);
-        worker.dispatch();
-        then(discord).should().sendLogDelivery(eq(WEBHOOK), contains("총 1건"));
-        ingest("interval", "[" + first + "," + error("fourth", groupA) + "]");
-        given(clock.millis()).willReturn(300_999L);
-        worker.dispatch();
-        then(discord).shouldHaveNoMoreInteractions();
+        queue.complete(queue.claim(server.getId()));
+        var start = lastWindowStart(server);
+        ingest("incident-summary", "[" + batch + "]");
+        for (int i = 0; i < 6; i++) {
+            setReceivedAt("summary-" + i, start.plusMinutes(5));
+        }
+
         given(clock.millis()).willReturn(301_000L);
-        worker.dispatch();
-        then(discord).should().sendLogDelivery(eq(WEBHOOK), argThat(message ->
-                message.contains("총 3건") && message.contains("SocketTimeoutException")
-                        && message.contains("2건") && message.contains("IllegalStateException")));
-        ingest("interval", "[" + error("repeat", groupA) + "]");
+        var summary = queue.claim(server.getId());
+        assertThat(summary.message()).contains("총 6건", "NullPointerException", "SocketTimeoutException", "[자세히 보기]");
+        URI link = URI.create(summary.message().substring(summary.message().lastIndexOf("](") + 2,
+                summary.message().length() - 1));
+        String path = "/api" + link.getPath();
+        String authorization = "Bearer " + link.getFragment().substring("token=".length());
+
+        ingest("incident-summary", "[" + error("summary-later", npe) + "]");
+        var response = mvc.perform(get(path).header("X-Incident-Edge", INCIDENT_KEY)
+                        .header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deliveryScoped").value(true))
+                .andExpect(jsonPath("$.occurrenceCount").value(6))
+                .andExpect(jsonPath("$.occurrences.length()").value(5))
+                .andExpect(jsonPath("$.occurrences[*].message", hasItems(npe, timeout)))
+                .andExpect(jsonPath("$.nextCursor").isString())
+                .andReturn();
+        String cursor = JsonPath.read(response.getResponse().getContentAsString(), "$.nextCursor");
+        mvc.perform(get(path).param("before", cursor).header("X-Incident-Edge", INCIDENT_KEY)
+                        .header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.occurrences.length()").value(1))
+                .andExpect(jsonPath("$.occurrences[0].message").value(npe))
+                .andExpect(jsonPath("$.nextCursor").isEmpty());
+
+        queue.retry(summary);
         given(clock.millis()).willReturn(601_000L);
-        worker.dispatch();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM log_alert_delivery WHERE server_id=? AND sent_at IS NOT NULL",
-                Long.class, server.getId())).isEqualTo(3);
+        var retry = queue.claim(server.getId());
+        assertThat(retry.message()).isEqualTo(summary.message());
+        queue.complete(retry);
+    }
+
+    @Test
+    void 링크_없이_배정된_미발송_집계가_재시도되면_같은_알림에_링크를_만든다() throws Exception {
+        var server = servers.saveAndFlush(TargetServer.builder().serverName("pending-summary")
+                .mcpToken("pending-summary-token").build());
+        ingest("pending-summary", "[" + error("pending-summary-first", "java.lang.NullPointerException") + "]");
+        given(clock.millis()).willReturn(1_000L);
+        queue.complete(queue.claim(server.getId()));
+        ingest("pending-summary", "[" + error("pending-summary-next", "java.net.SocketTimeoutException") + "]");
+        setReceivedAt("pending-summary-next", lastWindowStart(server).plusMinutes(5));
+
+        given(clock.millis()).willReturn(301_000L);
+        var summary = queue.claim(server.getId());
+        queue.retry(summary);
+        // 이전 버전에서 발송이 실패한 집계는 발송 ID와 배정 로그만 남아 있다.
+        assertThat(jdbc.update("DELETE FROM incident WHERE id = ?", summary.deliveryId())).isEqualTo(1);
+
+        given(clock.millis()).willReturn(601_000L);
+        var retry = queue.claim(server.getId());
+
+        assertThat(retry.deliveryId()).isEqualTo(summary.deliveryId());
+        assertThat(retry.message()).contains("총 1건", "SocketTimeoutException", "[자세히 보기]");
+        assertThat(jdbc.queryForObject("SELECT delivery_scoped FROM incident WHERE id = ?", Boolean.class,
+                retry.deliveryId())).isTrue();
+        queue.complete(retry);
+    }
+
+    @Test
+    void 발송후_5분안_오류는_같은_링크에_속하고_5분경계_오류부터_새로_발송한다() throws Exception {
+        var server = servers.saveAndFlush(TargetServer.builder().serverName("interval").mcpToken("interval-token").build());
+        String npe = "java.lang.NullPointerException";
+        String timeout = "java.net.SocketTimeoutException";
+        String other = "java.lang.IllegalStateException";
+        ingest("interval", "[" + error("interval-first", npe) + "]");
+        given(clock.millis()).willReturn(1_000L);
+        var first = queue.claim(server.getId());
+        assertThat(first.message()).contains("총 1건", "[자세히 보기]");
+        queue.complete(first);
+        var start = lastWindowStart(server);
+        ingest("interval", "[" + error("interval-third", timeout) + "," + error("interval-fourth", other) + ","
+                + "{\"eventId\":\"interval-info\",\"ts\":1000,\"level\":\"INFO\",\"message\":\"request received\"}]");
+        setReceivedAt("interval-third", start.plusMinutes(3));
+        setReceivedAt("interval-fourth", start.plusMinutes(4));
+        setReceivedAt("interval-info", start.plusMinutes(4));
+
+        given(clock.millis()).willReturn(300_999L);
+        assertThat(queue.claim(server.getId())).isNull();
+        URI firstLink = URI.create(first.message().substring(first.message().lastIndexOf("](") + 2,
+                first.message().length() - 1));
+        String firstAuthorization = "Bearer " + firstLink.getFragment().substring("token=".length());
+        mvc.perform(get("/api" + firstLink.getPath()).header("X-Incident-Edge", INCIDENT_KEY)
+                        .header("Authorization", firstAuthorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.occurrenceCount").value(3))
+                .andExpect(jsonPath("$.occurrences[*].message", hasItems(npe, timeout, other)));
+
+        given(clock.millis()).willReturn(301_000L);
+        assertThat(queue.claim(server.getId())).isNull();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM log_alert_delivery WHERE server_id=?",
+                Long.class, server.getId())).isEqualTo(1);
         assertThat(queue.readyServers()).doesNotContain(server.getId());
+        assertThat(jdbc.queryForList(
+                "SELECT alert_delivery FROM server_log WHERE event_id IN ('interval-third', 'interval-fourth')",
+                String.class)).containsExactly(first.deliveryId(), first.deliveryId());
+
+        ingest("interval", "[" + error("interval-boundary", timeout) + "]");
+        setReceivedAt("interval-boundary", start.plusMinutes(5));
+        var next = queue.claim(server.getId());
+        assertThat(next.deliveryId()).isNotEqualTo(first.deliveryId());
+        assertThat(next.message()).contains("총 1건", "SocketTimeoutException", "[자세히 보기]");
+        queue.complete(next);
+        assertThat(jdbc.update("UPDATE incident SET window_start=?, window_end=? WHERE id=?",
+                start.plusMinutes(5), start.plusMinutes(10), next.deliveryId())).isEqualTo(1);
+        assertThat(sentCount(server)).isEqualTo(2);
+        mvc.perform(get("/api" + firstLink.getPath()).header("X-Incident-Edge", INCIDENT_KEY)
+                        .header("Authorization", firstAuthorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.occurrenceCount").value(3));
+
+        // 수신 시각은 첫 창에 속하지만 다음 알림이 발송된 뒤에야 커밋된 행을 재현한다.
+        String late = "java.io.IOException";
+        ingest("interval", "[" + error("interval-late", late) + "]");
+        setReceivedAt("interval-late", start.plusMinutes(4).plusSeconds(30));
+        given(clock.millis()).willReturn(601_000L);
+        assertThat(queue.claim(server.getId())).isNull();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM log_alert_delivery WHERE server_id=?",
+                Long.class, server.getId())).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT alert_delivery FROM server_log WHERE event_id='interval-late'",
+                String.class)).isEqualTo(first.deliveryId());
+        mvc.perform(get("/api" + firstLink.getPath()).header("X-Incident-Edge", INCIDENT_KEY)
+                        .header("Authorization", firstAuthorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.occurrenceCount").value(4))
+                .andExpect(jsonPath("$.occurrences[*].message", hasItems(npe, timeout, other, late)));
+    }
+
+    private LocalDateTime lastWindowStart(TargetServer server) {
+        return jdbc.queryForObject("""
+                SELECT i.window_start FROM incident i JOIN log_alert_delivery d ON d.id=i.id
+                WHERE d.server_id=? AND d.sent_at IS NOT NULL
+                ORDER BY d.sent_at DESC LIMIT 1
+                """,
+                LocalDateTime.class, server.getId());
+    }
+
+    private void setReceivedAt(String eventId, LocalDateTime receivedAt) {
+        assertThat(jdbc.update("UPDATE server_log SET created_at=? WHERE event_id=?", receivedAt, eventId)).isEqualTo(1);
     }
 
     @Test

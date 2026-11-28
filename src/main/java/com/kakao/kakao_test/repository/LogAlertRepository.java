@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface LogAlertRepository extends JpaRepository<LogAlertChannel, Long> {
@@ -33,6 +34,9 @@ public interface LogAlertRepository extends JpaRepository<LogAlertChannel, Long>
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from LogAlertChannel c where c.serverId = :serverId")
     LogAlertChannel lockChannel(long serverId);
+
+    @Query(value = "select CAST(CURRENT_TIMESTAMP(0) AS DATETIME)", nativeQuery = true)
+    LocalDateTime currentLogReceiptTime();
 
     @Modifying
     @Query("""

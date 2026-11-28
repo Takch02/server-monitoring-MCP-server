@@ -1,0 +1,16 @@
+**
+!web/
+web/**
+!web/package.json
+!web/package-lock.json
+!web/index.html
+!web/src/
+!web/src/**
+!web/public/
+!web/public/**
+!web/tsconfig.json
+!web/vite.config.ts
+!deploy/
+deploy/**
+!deploy/incident-web.Caddyfile
+**/.env*
