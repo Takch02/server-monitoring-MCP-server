@@ -135,7 +135,10 @@ jobs:
 
             echo "Deployment failed for $DEPLOY_IMAGE"
             docker inspect --format 'status={{.State.Status}} exit={{.State.ExitCode}} restarts={{.RestartCount}}' "$candidate_id" || true
-            if docker stop "$candidate_id"; then
+            if ! docker update --restart=no "$candidate_id"; then
+              echo "Could not disable automatic restart; removing the failed container before rollback"
+              docker rm -f "$candidate_id" || echo "Could not remove the failed container $candidate_id"
+            elif docker stop "$candidate_id"; then
               failed_name="$CONTAINER-failed-$candidate_id"
               if docker rename "$candidate_id" "$failed_name"; then
                 echo "Failed container preserved as $failed_name"
