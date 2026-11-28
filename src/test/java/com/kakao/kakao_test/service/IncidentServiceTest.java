@@ -41,9 +41,10 @@ class IncidentServiceTest {
     @Test
     void 공개주소_미설정이면_사건을_저장하거나_링크를_발급하지_않는다() {
         var service = new IncidentService(incidents, logs, new Settings(null, null), Clock.systemUTC());
+        var start = LocalDateTime.of(2026, 1, 1, 10, 0);
 
-        assertThat(service.linkForAlert("delivery", 1L, true)).isEmpty();
-        assertThat(service.linkForAlert("delivery", 1L, false)).isEmpty();
+        assertThat(service.linkForAlert("delivery", 1L)).isEmpty();
+        service.confirmWindow("delivery", start, start.plusMinutes(5));
         then(logs).shouldHaveNoInteractions();
         then(incidents).shouldHaveNoInteractions();
     }
@@ -142,7 +143,7 @@ class IncidentServiceTest {
     }
 
     private String authorization(IncidentService service) {
-        String fragment = URI.create(service.linkForAlert(INCIDENT_ID, 1L, true).orElseThrow()).getFragment();
+        String fragment = URI.create(service.linkForAlert(INCIDENT_ID, 1L).orElseThrow()).getFragment();
         return "Bearer " + fragment.substring("token=".length());
     }
 }

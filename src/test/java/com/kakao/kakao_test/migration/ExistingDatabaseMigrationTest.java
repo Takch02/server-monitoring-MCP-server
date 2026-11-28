@@ -36,15 +36,16 @@ class ExistingDatabaseMigrationTest {
                     """);
 
             var upgrade = Flyway.configure().dataSource(url, "sa", "").load();
-            assertThat(upgrade.migrate().migrationsExecuted).isEqualTo(1);
+            assertThat(upgrade.migrate().migrationsExecuted).isEqualTo(2);
             assertThat(upgrade.migrate().migrationsExecuted).isZero();
 
             try (var rows = statement.executeQuery("""
-                    SELECT delivery_scoped, error_group_key, window_start, window_end, expires_at
+                    SELECT delivery_scoped, live_window, error_group_key, window_start, window_end, expires_at
                     FROM incident WHERE id = 'old-delivery'
                     """)) {
                 assertThat(rows.next()).isTrue();
                 assertThat(rows.getObject("delivery_scoped", Boolean.class)).isFalse();
+                assertThat(rows.getObject("live_window", Boolean.class)).isFalse();
                 assertThat(rows.getString("error_group_key")).isEqualTo("old-group");
                 assertThat(rows.getObject("window_start", LocalDateTime.class)).isEqualTo(LocalDateTime.of(2026, 11, 28, 10, 0));
                 assertThat(rows.getObject("window_end", LocalDateTime.class)).isEqualTo(LocalDateTime.of(2026, 11, 28, 10, 5));

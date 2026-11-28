@@ -31,6 +31,7 @@ public class Incident extends BaseTimeEntity {
     private LocalDateTime windowEnd;
     private long expiresAt;
     private boolean deliveryScoped;
+    private boolean liveWindow;
 
     public Incident(String deliveryId, ServerLog representative, LocalDateTime windowEnd, long expiresAt,
                     boolean deliveryScoped) {
@@ -46,5 +47,11 @@ public class Incident extends BaseTimeEntity {
 
     public void renewLink(long expiresAt) {
         this.expiresAt = expiresAt;
+    }
+
+    public void includeFollowupLogs(LocalDateTime start, LocalDateTime end) {
+        liveWindow = true;
+        windowStart = start;
+        windowEnd = end;
     }
 }
