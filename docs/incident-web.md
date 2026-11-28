@@ -12,27 +12,58 @@
 
 ## Oracle 배포
 
-1. `web/dist/`의 내용을 중앙 VM에 복사한다. 현재 Docker Caddy에 [Caddyfile 예시](../deploy/incident-web.Caddyfile)를 적용하고, 해당 정적 파일 디렉터리를 `/srv/server-doctor-web`으로 마운트한다. 기존 인증서 `/data` 볼륨과 호스트 네트워크를 사용한다.
+1. 중앙 VM에 배포마다 새 디렉터리(예: `~/server-doctor-https/releases/incident-v1`)를 만든다. 여기에 [Caddyfile 예시](../deploy/incident-web.Caddyfile), 빌드 결과 `dist/`, `INCIDENT_LINK_KEY`가 담긴 `incident-web.env`를 준비한다. 이전 컨테이너가 사용 중인 디렉터리는 그대로 둔다. 기존 인증서 `/data` 볼륨과 호스트 네트워크는 재사용한다.
 2. Caddy 컨테이너와 중앙 Spring 서버 모두에 같은 `INCIDENT_LINK_KEY`를 설정한다. 이 키는 기존 `ALERT_WEBHOOK_KEY`와 별도로 생성하며, Caddy에는 별도의 환경 파일로 전달한다. Caddy가 HTTPS 사건 API 요청에 내부 헤더를 설정한다. Spring에 직접 접근하면 해당 헤더가 없어서 사건 API는 404를 반환한다.
 3. 중앙 Spring 서버에 `INCIDENT_PUBLIC_URL=https://server-doctor.xyz`를 설정한 뒤 배포한다. Flyway V5가 자동 적용된다. 공개 주소를 비워 두면 링크 발급이 비활성화된다. 발급 시 사용한 키가 바뀌면 이전 공유 링크는 만료 시각과 상관없이 열 수 없으므로 재배포 때 같은 키를 사용한다.
 4. 새 데모 서버를 등록해 첫 오류를 한 건 발생시킨다. Discord 링크를 새 브라우저에서 열고, 페이지를 새로고침한 뒤 초기 5분 안의 새 오류가 표시되고, 이후 수신된 오류는 표시되지 않는지 확인한다. 기존에 이미 첫 알림을 보낸 서버는 이번 단계의 첫 알림을 검증할 수 없으므로 새 서버 이름을 쓴다.
 
-기존 Caddy를 Docker로 실행했다면 배포 시 별도 환경 파일과 빌드 디렉터리를 추가해 컨테이너를 재생성한다. 예시는 기존 `~/server-doctor-https` 경로와 볼륨 이름을 사용한다. 환경 파일에는 `INCIDENT_LINK_KEY` 한 줄을 넣고, 기존 컨테이너를 중지하기 전에 환경 파일과 `dist/index.html`을 준비한다.
+아래 `release`에 새 배포 디렉터리를 지정한다. 새 컨테이너를 먼저 생성하고, 기존 Caddy는 고유한 백업 이름으로 바꾼 뒤 잠시 중지한다. 새 Caddy가 HTTPS로 헬스체크와 상세 화면 요청에 정상 응답하면 운영 이름을 넘기고 기존 컨테이너를 삭제한다. 확인에 실패하면 기존 설정과 화면을 사용하던 컨테이너를 다시 실행한다.
 
 ```bash
-cd ~/server-doctor-https
-docker stop server-doctor-caddy &&
-docker rename server-doctor-caddy server-doctor-caddy-before-incidents &&
-docker run -d --name server-doctor-caddy \
-  --restart unless-stopped --network host \
-  --env-file "$PWD/incident-web.env" \
-  -v "$PWD/incident-web.Caddyfile:/etc/caddy/Caddyfile:ro" \
-  -v "$PWD/dist:/srv/server-doctor-web:ro" \
-  -v server-doctor-caddy-data:/data \
-  -v server-doctor-caddy-config:/config \
-  caddy:2-alpine
+(
+  release="$HOME/server-doctor-https/releases/incident-v1"
+  name=server-doctor-caddy
+  test -f "$release/incident-web.env" && test -f "$release/incident-web.Caddyfile" &&
+    test -f "$release/dist/index.html" || exit 1
+
+  old_id=$(docker container inspect --format '{{.Id}}' "$name") || exit 1
+  backup="$name-before-incidents-${old_id:0:12}"
+  candidate="$name-next-${old_id:0:12}"
+  new_id=$(docker create --name "$candidate" \
+    --restart unless-stopped --network host \
+    --env-file "$release/incident-web.env" \
+    -v "$release/incident-web.Caddyfile:/etc/caddy/Caddyfile:ro" \
+    -v "$release/dist:/srv/server-doctor-web:ro" \
+    -v server-doctor-caddy-data:/data \
+    -v server-doctor-caddy-config:/config \
+    caddy:2-alpine) || exit 1
+  if ! docker rename "$old_id" "$backup"; then
+    docker rm "$new_id"
+    exit 1
+  fi
+
+  if docker stop "$old_id" && docker start "$new_id"; then
+    for attempt in {1..12}; do
+      if health=$(curl --resolve server-doctor.xyz:443:127.0.0.1 -fsS --max-time 5 \
+           https://server-doctor.xyz/actuator/health) &&
+         grep -Eq '"status"[[:space:]]*:[[:space:]]*"UP"' <<< "$health" &&
+         page=$(curl --resolve server-doctor.xyz:443:127.0.0.1 -fsS --max-time 5 \
+           https://server-doctor.xyz/incidents/deploy-check) &&
+         grep -Fq '<div id="root"></div>' <<< "$page" &&
+         docker rename "$new_id" "$name"; then
+        docker rm "$old_id"
+        exit $?
+      fi
+      sleep 2
+    done
+  fi
+
+  docker rm -f "$new_id" || exit 1
+  docker rename "$old_id" "$name" && docker start "$old_id"
+  exit 1
+)
 ```
 
-Caddy 재생성 중에는 HTTPS 연결이 잠시 끊길 수 있다. 새 컨테이너가 정상인지 `curl -fsS https://server-doctor.xyz/actuator/health`로 확인한다.
+Caddy 재생성 중에는 HTTPS 연결이 잠시 끊길 수 있다. 기존 컨테이너를 복구했을 때도 명령은 실패 상태를 반환한다. 실제 공유 링크 검증은 위의 새 데모 서버로 진행한다.
 
 기본 Caddy의 `/mcp`, 기존 수집 API, `/actuator/health`는 기존 Spring으로 전달된다. 5분 요약의 그룹별 링크, CPU/JVM 그래프, 랜딩과 대시보드는 다음 단계 범위다.
