@@ -53,25 +53,23 @@ public class IncidentService {
     private final Clock clock;
 
     @Transactional
-    public void captureFirstAlert(String deliveryId, long serverId) {
-        if (!settings.enabled()) return;
-
-        ServerLog representative = serverLogRepository.findFirstByServer_IdAndAlertDeliveryOrderById(serverId, deliveryId)
-                .orElseThrow();
-        Incident incident = new Incident(deliveryId, representative,
-                representative.getCreatedAt().plusMinutes(INCIDENT_WINDOW_MINUTES),
-                clock.millis() + LINK_LIFETIME.toMillis());
-        incidentRepository.save(incident);
-    }
-
-    @Transactional(readOnly = true)
-    public Optional<String> linkFor(String incidentId) {
+    public Optional<String> linkForAlert(String deliveryId, long serverId, boolean firstAlert) {
         if (!settings.enabled()) return Optional.empty();
 
-        return incidentRepository.findById(incidentId)
-                .filter(incident -> clock.millis() < incident.getExpiresAt())
-                .map(incident -> settings.publicOrigin().resolve("/incidents/" + incident.getId())
-                        + "#token=" + signature(incident));
+        long now = clock.millis();
+        long expiresAt = now + LINK_LIFETIME.toMillis();
+        Incident incident = incidentRepository.findById(deliveryId)
+                .orElseGet(() -> captureAlert(deliveryId, serverId, firstAlert, expiresAt));
+        if (incident.getExpiresAt() <= now) incident.renewLink(expiresAt);
+        return Optional.of(settings.publicOrigin().resolve("/incidents/" + deliveryId) + "#token=" + signature(incident));
+    }
+
+    private Incident captureAlert(String deliveryId, long serverId, boolean firstAlert, long expiresAt) {
+        ServerLog representative = serverLogRepository
+                .findFirstByServer_IdAndAlertDeliveryOrderByCreatedAtAscIdAsc(serverId, deliveryId).orElseThrow();
+        var end = firstAlert ? representative.getCreatedAt().plusMinutes(INCIDENT_WINDOW_MINUTES)
+                : serverLogRepository.findLastDeliveryReceivedAt(serverId, deliveryId);
+        return incidentRepository.save(new Incident(deliveryId, representative, end, expiresAt, !firstAlert));
     }
 
     @Transactional(readOnly = true)
@@ -93,16 +91,19 @@ public class IncidentService {
         String groupKey = incident.getErrorGroupKey();
         var start = incident.getWindowStart();
         var end = incident.getWindowEnd();
-        long count = serverLogRepository.countIncidentOccurrences(server, groupKey, start, end);
-        var logs = serverLogRepository.findIncidentOccurrences(server, groupKey, start, end, beforeId,
-                PageRequest.ofSize(PAGE_SIZE + 1));
+        boolean deliveryScoped = incident.isDeliveryScoped();
+        long count = deliveryScoped ? serverLogRepository.countByServer_IdAndAlertDelivery(server.getId(), id)
+                : serverLogRepository.countIncidentOccurrences(server, groupKey, start, end);
+        var limit = PageRequest.ofSize(PAGE_SIZE + 1);
+        var logs = deliveryScoped ? serverLogRepository.findDeliveryOccurrences(server.getId(), id, beforeId, limit)
+                : serverLogRepository.findIncidentOccurrences(server, groupKey, start, end, beforeId, limit);
         String nextCursor = logs.size() > PAGE_SIZE ? logs.get(PAGE_SIZE - 1).getId().toString() : null;
         var occurrences = logs.stream().limit(PAGE_SIZE).map(this::occurrence).toList();
         Occurrence representative = serverLogRepository.findById(incident.getRepresentativeLogId())
                 .map(this::occurrence).orElse(null);
         return new IncidentDetailDto(id, incident.getServer().getServerName(), incident.getErrorGroupKey(),
                 incident.getWindowStart(), incident.getWindowEnd(), Instant.ofEpochMilli(incident.getExpiresAt()),
-                count, representative, occurrences, nextCursor);
+                deliveryScoped, count, representative, occurrences, nextCursor);
     }
 
     private Occurrence occurrence(ServerLog log) {

@@ -40,20 +40,19 @@ public class LogAlertQueue {
         // 비관락을 사용하여 같은 에러를 여러개 보내지 않도록 한다.
         var state = logAlertRepository.lockChannel(serverId);
         if (state.getAvailableAt() > clock.millis()) return null;
+        boolean firstAlert = state.getLastSentAt() == null;
         String delivery = state.getActiveDelivery();
         if (delivery == null) {
             delivery = UUID.randomUUID().toString();
             // 첫 메시지는 한 건만 보낸다. 같은 배치의 나머지도 다음 요약에 남겨 둔다.
-            int assigned = state.getLastSentAt() == null ? serverLogRepository.assignFirstPending(delivery, serverId)
+            int assigned = firstAlert ? serverLogRepository.assignFirstPending(delivery, serverId)
                     : serverLogRepository.assignAllPending(delivery, serverId);
             if (assigned == 0) return null;
             logAlertDeliveryRepository.save(new LogAlertDelivery(delivery, serverId));
-            if (state.getLastSentAt() == null) incidentService.captureFirstAlert(delivery, serverId);
         }
         String message = summary(serverId, state.getServer().getServerName(), delivery);
-        if (state.getLastSentAt() == null) {
-            message += incidentService.linkFor(delivery).map(url -> "\n[자세히 보기](" + url + ")").orElse("");
-        }
+        message += incidentService.linkForAlert(delivery, serverId, firstAlert)
+                .map(url -> "\n[자세히 보기](" + url + ")").orElse("");
         String token = UUID.randomUUID().toString();
         state.reserve(delivery, token, clock.millis() + LEASE);
         return new Claim(serverId, delivery, token, state.getEncryptedWebhook(), message);

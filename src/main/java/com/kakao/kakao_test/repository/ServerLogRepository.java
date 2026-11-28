@@ -42,9 +42,19 @@ public interface ServerLogRepository extends JpaRepository<ServerLog, Long> {
             """, nativeQuery = true)
     List<AlertGroup> topAlertGroups(long serverId, String delivery, Pageable limit);
 
-    Optional<ServerLog> findFirstByServer_IdAndAlertDeliveryOrderById(long serverId, String alertDelivery);
+    Optional<ServerLog> findFirstByServer_IdAndAlertDeliveryOrderByCreatedAtAscIdAsc(long serverId, String alertDelivery);
 
     long countByServer_IdAndAlertDelivery(long serverId, String alertDelivery);
+
+    @Query("select max(l.createdAt) from ServerLog l where l.server.id=:serverId and l.alertDelivery=:delivery")
+    LocalDateTime findLastDeliveryReceivedAt(long serverId, String delivery);
+
+    @Query("""
+            select l from ServerLog l where l.server.id=:serverId and l.alertDelivery=:delivery
+              and (:beforeId is null or l.id<:beforeId)
+            order by l.id desc
+            """)
+    List<ServerLog> findDeliveryOccurrences(long serverId, String delivery, Long beforeId, Pageable limit);
 
     @Query("""
             select count(l) from ServerLog l

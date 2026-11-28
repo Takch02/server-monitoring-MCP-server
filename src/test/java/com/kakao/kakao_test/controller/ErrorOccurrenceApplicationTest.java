@@ -28,6 +28,7 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Callable;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasItems;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -256,8 +257,78 @@ class ErrorOccurrenceApplicationTest {
         mvc.perform(get(path).header("X-Incident-Edge", INCIDENT_KEY).header("Authorization", authorization))
                 .andExpect(status().isNotFound());
         var summary = queue.claim(server.getId());
-        assertThat(summary.message()).doesNotContain("[자세히 보기]");
+        assertThat(summary.message()).contains("[자세히 보기]");
         queue.complete(summary);
+    }
+
+    @Test
+    void 집계_링크는_그_알림의_모든_오류_종류를_보여주고_재시도에도_유지된다() throws Exception {
+        var server = servers.saveAndFlush(TargetServer.builder().serverName("incident-summary")
+                .mcpToken("incident-summary-token").build());
+        String npe = "java.lang.NullPointerException";
+        String timeout = "java.net.SocketTimeoutException";
+        String batch = IntStream.range(0, 6).mapToObj(index -> error("summary-" + index, index < 4 ? npe : timeout))
+                .collect(Collectors.joining(","));
+        ingest("incident-summary", "[" + error("summary-first", "java.lang.IllegalStateException") + "," + batch + "]");
+        given(clock.millis()).willReturn(1_000L);
+        queue.complete(queue.claim(server.getId()));
+
+        given(clock.millis()).willReturn(301_000L);
+        var summary = queue.claim(server.getId());
+        assertThat(summary.message()).contains("총 6건", "NullPointerException", "SocketTimeoutException", "[자세히 보기]");
+        URI link = URI.create(summary.message().substring(summary.message().lastIndexOf("](") + 2,
+                summary.message().length() - 1));
+        String path = "/api" + link.getPath();
+        String authorization = "Bearer " + link.getFragment().substring("token=".length());
+
+        ingest("incident-summary", "[" + error("summary-later", npe) + "]");
+        var response = mvc.perform(get(path).header("X-Incident-Edge", INCIDENT_KEY)
+                        .header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deliveryScoped").value(true))
+                .andExpect(jsonPath("$.occurrenceCount").value(6))
+                .andExpect(jsonPath("$.occurrences.length()").value(5))
+                .andExpect(jsonPath("$.occurrences[*].message", hasItems(npe, timeout)))
+                .andExpect(jsonPath("$.nextCursor").isString())
+                .andReturn();
+        String cursor = JsonPath.read(response.getResponse().getContentAsString(), "$.nextCursor");
+        mvc.perform(get(path).param("before", cursor).header("X-Incident-Edge", INCIDENT_KEY)
+                        .header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.occurrences.length()").value(1))
+                .andExpect(jsonPath("$.occurrences[0].message").value(npe))
+                .andExpect(jsonPath("$.nextCursor").isEmpty());
+
+        queue.retry(summary);
+        given(clock.millis()).willReturn(601_000L);
+        var retry = queue.claim(server.getId());
+        assertThat(retry.message()).isEqualTo(summary.message());
+        queue.complete(retry);
+    }
+
+    @Test
+    void 링크_없이_배정된_미발송_집계가_재시도되면_같은_알림에_링크를_만든다() throws Exception {
+        var server = servers.saveAndFlush(TargetServer.builder().serverName("pending-summary")
+                .mcpToken("pending-summary-token").build());
+        ingest("pending-summary", "[" + error("pending-summary-first", "java.lang.NullPointerException") + ","
+                + error("pending-summary-next", "java.net.SocketTimeoutException") + "]");
+        given(clock.millis()).willReturn(1_000L);
+        queue.complete(queue.claim(server.getId()));
+
+        given(clock.millis()).willReturn(301_000L);
+        var summary = queue.claim(server.getId());
+        queue.retry(summary);
+        // 이전 버전에서 발송이 실패한 집계는 발송 ID와 배정 로그만 남아 있다.
+        assertThat(jdbc.update("DELETE FROM incident WHERE id = ?", summary.deliveryId())).isEqualTo(1);
+
+        given(clock.millis()).willReturn(601_000L);
+        var retry = queue.claim(server.getId());
+
+        assertThat(retry.deliveryId()).isEqualTo(summary.deliveryId());
+        assertThat(retry.message()).contains("총 1건", "SocketTimeoutException", "[자세히 보기]");
+        assertThat(jdbc.queryForObject("SELECT delivery_scoped FROM incident WHERE id = ?", Boolean.class,
+                retry.deliveryId())).isTrue();
+        queue.complete(retry);
     }
 
     @Test

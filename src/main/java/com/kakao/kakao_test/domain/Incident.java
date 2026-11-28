@@ -30,14 +30,21 @@ public class Incident extends BaseTimeEntity {
     private LocalDateTime windowStart;
     private LocalDateTime windowEnd;
     private long expiresAt;
+    private boolean deliveryScoped;
 
-    public Incident(String deliveryId, ServerLog representative, LocalDateTime windowEnd, long expiresAt) {
+    public Incident(String deliveryId, ServerLog representative, LocalDateTime windowEnd, long expiresAt,
+                    boolean deliveryScoped) {
         id = deliveryId;
         server = representative.getServer();
         errorGroupKey = representative.getErrorGroupKey();
         representativeLogId = representative.getId();
         windowStart = representative.getCreatedAt();
         this.windowEnd = windowEnd;
+        this.expiresAt = expiresAt;
+        this.deliveryScoped = deliveryScoped;
+    }
+
+    public void renewLink(long expiresAt) {
         this.expiresAt = expiresAt;
     }
 }
